@@ -16,6 +16,12 @@ CHANGELOG_PENDENTE.txt
 # Config local do desenvolvedor
 MultiMigrador.dproj.local
 
+# Recursos embutidos gerados por gerar_recursos.bat (derivados, grandes).
+# Regenere com: gerar_recursos.bat  (antes de compilar)
+migradores.zip
+DllsEmbutidas.res
+DllsEmbutidas.RES
+
 # Observacao: os .exe (launcher + migradores) e as DLLs de runtime sao
 # versionados de proposito, pois o Multi Migrador e distribuido como um
 # pacote unico com todos os sistemas juntos.

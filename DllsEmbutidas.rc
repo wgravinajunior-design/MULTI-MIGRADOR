@@ -1,3 +1,5 @@
-// DLLs do OpenSSL embutidas no exe; extraidas em runtime por UEmbutidos.pas
-LIBEAY32 RCDATA "libeay32.dll"
-SSLEAY32 RCDATA "ssleay32.dll"
+// Recursos embutidos no exe, extraidos em runtime.
+// DLLs do OpenSSL (para o SMTP) e o pacote com todos os migradores.
+LIBEAY32   RCDATA "libeay32.dll"
+SSLEAY32   RCDATA "ssleay32.dll"
+MIGRADORES RCDATA "migradores.zip"
