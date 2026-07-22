@@ -20,6 +20,8 @@ uses
   Winapi.Windows, System.SysUtils, System.Classes, System.IOUtils, System.Zip,
   UAtualizador;
 
+{$WARN SYMBOL_PLATFORM OFF}
+
 const
   MARCADOR = '.migradores.ver';
 
@@ -70,6 +72,12 @@ begin
           Continue;
         end;
 
+        // Preserva configuracoes locais: um .ini que ja existe na maquina do
+        // cliente (ex.: dados de conexao) nao e sobrescrito na atualizacao.
+        // Na 1a instalacao ele nao existe, entao e extraido como padrao.
+        if SameText(ExtractFileExt(Destino), '.ini') and TFile.Exists(Destino) then
+          Continue;
+
         try
           ForceDirectories(ExtractFilePath(Destino));
           Zip.Read(i, Bytes);
@@ -85,12 +93,13 @@ begin
     RS.Free;
   end;
 
-  // grava o marcador da versao extraida
+  // grava o marcador da versao extraida. Se ja existe (oculto), limpa o atributo
+  // antes para o WriteAllText conseguir sobrescrever; depois volta a ocultar.
   try
+    if TFile.Exists(Dir + MARCADOR) then
+      TFile.SetAttributes(Dir + MARCADOR, []);
     TFile.WriteAllText(Dir + MARCADOR, APP_VERSAO);
-    {$WARN SYMBOL_PLATFORM OFF}
-    FileSetAttr(Dir + MARCADOR, faHidden);
-    {$WARN SYMBOL_PLATFORM ON}
+    TFile.SetAttributes(Dir + MARCADOR, [TFileAttribute.faHidden]);
   except
     // opcional; ignora falha
   end;
