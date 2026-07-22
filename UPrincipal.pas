@@ -6,7 +6,7 @@ uses
   Winapi.Windows, Winapi.ShellAPI, System.SysUtils, System.Classes, System.IOUtils,
   System.UITypes, Vcl.Graphics, Vcl.Controls, Vcl.Forms, Vcl.Dialogs,
   Vcl.ExtCtrls, Vcl.StdCtrls, Vcl.Imaging.pngimage, Vcl.Imaging.jpeg,
-  UReportarProblema, UAtualizador;
+  UReportarProblema, UAtualizador, UMigradores;
 
 type
   TFormPrincipal = class(TForm)
@@ -139,23 +139,12 @@ end;
 
 // Sobe a partir da pasta do executavel ate achar a raiz do projeto (onde fica o .dpr).
 // Assim funciona tanto com o exe na raiz do projeto quanto rodando pela IDE.
+// Os sistemas sao lidos de UMigradores.PastaSistemas: na pasta do projeto
+// quando rodando pela IDE, e em %LOCALAPPDATA%\MultiMigrador\Sistemas quando
+// distribuido -- assim a pasta do executavel fica limpa na maquina do cliente.
 function TFormPrincipal.PastaBase: string;
-var
-  Dir, Pai: string;
 begin
-  Dir := ExcludeTrailingPathDelimiter(ExtractFilePath(ParamStr(0)));
-  repeat
-    if TFile.Exists(TPath.Combine(Dir, 'MultiMigrador.dpr')) or
-       TFile.Exists(TPath.Combine(Dir, 'MultiMigrador.dproj')) then
-      Exit(Dir);
-      
-    Pai := ExtractFileDir(Dir);
-    if Pai = Dir then // chegou na raiz do drive
-      Break;
-    Dir := Pai;
-  until False;
-
-  Result := ExcludeTrailingPathDelimiter(ExtractFilePath(ParamStr(0)));
+  Result := ExcludeTrailingPathDelimiter(PastaSistemas);
 end;
 
 // Procura o .exe do migrador dentro da pasta do sistema, escolhendo o build

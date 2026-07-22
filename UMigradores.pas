@@ -12,6 +12,16 @@ unit UMigradores;
 
 interface
 
+// Pasta onde os migradores ficam (e de onde o launcher os lista).
+//
+//  - Rodando do projeto (existe MultiMigrador.dpr/.dproj ao lado do exe):
+//    usa a propria pasta do projeto, para o desenvolvedor continuar mexendo
+//    direto nas pastas versionadas.
+//  - Distribuido (so o exe): usa %LOCALAPPDATA%\MultiMigrador\Sistemas.
+//    Assim a pasta onde o usuario colocou o exe NAO e poluida com os 15
+//    sistemas -- fica so o executavel, como pedido.
+function PastaSistemas: string;
+
 procedure ExtrairMigradores;
 
 implementation
@@ -24,6 +34,27 @@ uses
 
 const
   MARCADOR = '.migradores.ver';
+
+function EhAmbienteDeProjeto: Boolean;
+var
+  Dir: string;
+begin
+  Dir := IncludeTrailingPathDelimiter(ExtractFilePath(ParamStr(0)));
+  Result := TFile.Exists(Dir + 'MultiMigrador.dpr') or
+            TFile.Exists(Dir + 'MultiMigrador.dproj');
+end;
+
+function PastaSistemas: string;
+begin
+  if EhAmbienteDeProjeto then
+    Result := IncludeTrailingPathDelimiter(ExtractFilePath(ParamStr(0)))
+  else
+  begin
+    Result := IncludeTrailingPathDelimiter(
+      TPath.Combine(TPath.GetHomePath, 'MultiMigrador\Sistemas'));
+    ForceDirectories(Result);
+  end;
+end;
 
 function VersaoExtraida(const ADir: string): string;
 begin
@@ -47,7 +78,7 @@ begin
   if FindResource(HInstance, 'MIGRADORES', RT_RCDATA) = 0 then
     Exit;
 
-  Dir := IncludeTrailingPathDelimiter(ExtractFilePath(ParamStr(0)));
+  Dir := PastaSistemas;
 
   // Ja extraido nesta versao? Nao faz nada.
   if VersaoExtraida(Dir) = APP_VERSAO then
