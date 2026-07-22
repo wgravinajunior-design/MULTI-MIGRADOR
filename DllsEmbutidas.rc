@@ -1,0 +1,3 @@
+// DLLs do OpenSSL embutidas no exe; extraidas em runtime por UEmbutidos.pas
+LIBEAY32 RCDATA "libeay32.dll"
+SSLEAY32 RCDATA "ssleay32.dll"
