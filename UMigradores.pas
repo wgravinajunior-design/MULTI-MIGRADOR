@@ -45,15 +45,21 @@ begin
 end;
 
 function PastaSistemas: string;
+var
+  Base: string;
 begin
   if EhAmbienteDeProjeto then
-    Result := IncludeTrailingPathDelimiter(ExtractFilePath(ParamStr(0)))
-  else
-  begin
-    Result := IncludeTrailingPathDelimiter(
-      TPath.Combine(TPath.GetHomePath, 'MultiMigrador\Sistemas'));
-    ForceDirectories(Result);
-  end;
+    Exit(IncludeTrailingPathDelimiter(ExtractFilePath(ParamStr(0))));
+
+  // LOCALAPPDATA e nao TPath.GetHomePath: este ultimo devolve o Roaming, que
+  // em rede corporativa sincroniza o perfil -- e sao ~250 MB de executaveis.
+  Base := GetEnvironmentVariable('LOCALAPPDATA');
+  if Base = '' then
+    Base := TPath.GetHomePath;
+
+  Result := IncludeTrailingPathDelimiter(
+    TPath.Combine(Base, 'MultiMigrador\Sistemas'));
+  ForceDirectories(Result);
 end;
 
 function VersaoExtraida(const ADir: string): string;

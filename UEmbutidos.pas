@@ -11,7 +11,8 @@ procedure ExtrairDLLsEmbutidas;
 implementation
 
 uses
-  Winapi.Windows, System.SysUtils, System.Classes, System.IOUtils;
+  Winapi.Windows, System.SysUtils, System.Classes, System.IOUtils,
+  IdSSLOpenSSLHeaders, UMigradores;
 
 // Extrai um recurso RCDATA para ADestino. Se ja existe com o mesmo tamanho,
 // nao regrava (evita tocar em arquivo possivelmente em uso por outra instancia).
@@ -38,13 +39,18 @@ begin
   end;
 end;
 
+// As DLLs vao para a mesma pasta dos sistemas (fora da pasta do exe, quando
+// distribuido). Como nao estao mais ao lado do executavel, e preciso avisar o
+// Indy onde procura-las -- senao o envio do "Reportar Problema" falharia com
+// "Could not load SSL library".
 procedure ExtrairDLLsEmbutidas;
 var
   Dir: string;
 begin
-  Dir := ExtractFilePath(ParamStr(0));
+  Dir := PastaSistemas;
   ExtrairRecurso('LIBEAY32', Dir + 'libeay32.dll');
   ExtrairRecurso('SSLEAY32', Dir + 'ssleay32.dll');
+  IdOpenSSLSetLibPath(ExcludeTrailingPathDelimiter(Dir));
 end;
 
 end.
