@@ -6,7 +6,7 @@ uses
   Winapi.Windows, Winapi.ShellAPI, System.SysUtils, System.Classes, System.IOUtils,
   System.UITypes, Vcl.Graphics, Vcl.Controls, Vcl.Forms, Vcl.Dialogs,
   Vcl.ExtCtrls, Vcl.StdCtrls, Vcl.Imaging.pngimage, Vcl.Imaging.jpeg,
-  UReportarProblema;
+  UReportarProblema, UAtualizador;
 
 type
   TFormPrincipal = class(TForm)
@@ -31,6 +31,7 @@ type
     procedure CardMouseEnter(Sender: TObject);
     procedure CardMouseLeave(Sender: TObject);
     procedure ReportarProblemaClick(Sender: TObject);
+    procedure AtualizacaoVerificada(const AInfo: TInfoAtualizacao);
   end;
 
 var
@@ -86,7 +87,39 @@ begin
   else
     LabelBuild.Caption := 'Build: --';
 
+  // Mostra a versao atual do app ao lado da data de build.
+  LabelBuild.Caption := 'v' + APP_VERSAO + '  |  ' + LabelBuild.Caption;
+
   CarregarSistemas;
+
+  // Limpeza pos-atualizacao + exibe o changelog da versao recem-instalada.
+  ProcessarStartup;
+
+  // Verifica no GitHub se ha versao mais nova (em background, sem travar a UI).
+  VerificarAtualizacoesAsync(AtualizacaoVerificada);
+end;
+
+procedure TFormPrincipal.AtualizacaoVerificada(const AInfo: TInfoAtualizacao);
+var
+  Erro: string;
+begin
+  if not AInfo.Sucesso then
+    Exit; // falha de rede/GitHub: silencioso, nao incomoda o usuario
+  if not AInfo.TemAtualizacao then
+    Exit;
+
+  if not PerguntarAtualizar(AInfo) then
+    Exit; // usuario escolheu "Nao"
+
+  if BaixarEInstalar(AInfo, Erro) then
+  begin
+    MessageDlg('Atualizacao baixada. O sistema sera reiniciado na nova versao.',
+      mtInformation, [mbOK], 0);
+    ReiniciarApp;      // abre o novo exe
+    Application.Terminate; // fecha o atual
+  end
+  else
+    MessageDlg('Nao foi possivel atualizar:'#13#10 + Erro, mtError, [mbOK], 0);
 end;
 
 procedure TFormPrincipal.FormDestroy(Sender: TObject);

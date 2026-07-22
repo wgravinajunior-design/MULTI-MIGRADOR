@@ -3,7 +3,8 @@ program MultiMigrador;
 uses
   Vcl.Forms,
   UPrincipal in 'UPrincipal.pas' {FormPrincipal},
-  UReportarProblema in 'UReportarProblema.pas';
+  UReportarProblema in 'UReportarProblema.pas',
+  UAtualizador in 'UAtualizador.pas';
 
 {$R *.res}
 

@@ -1,0 +1,21 @@
+# Saidas intermediarias de compilacao do Delphi
+Win32/
+Win64/
+__history/
+__recovery/
+*.dcu
+*.identcache
+*.dsk
+*.~*
+
+# Arquivos temporarios do auto-update
+*.exe.old
+*.exe.update
+CHANGELOG_PENDENTE.txt
+
+# Config local do desenvolvedor
+MultiMigrador.dproj.local
+
+# Observacao: os .exe (launcher + migradores) e as DLLs de runtime sao
+# versionados de proposito, pois o Multi Migrador e distribuido como um
+# pacote unico com todos os sistemas juntos.
