@@ -14,7 +14,7 @@ REM ==========================================================================
 cd /d "%~dp0"
 
 echo [1/2] Gerando migradores.zip a partir dos arquivos versionados...
-git archive --format=zip -o migradores.zip HEAD -- "ARPA SISTEMAS" "CLOSMAQ" "DMA SISTEMAS" "EMC SOFTWARE" "GANSO SISTEMAS" "LC SISTEMAS" "LINK PRO" "PROJECT 7" "QUESTOR" "RENSOFTWARE" "VTI"
+git archive --format=zip -o migradores.zip HEAD -- "ARPA SISTEMAS" "CLOSMAQ" "DMA SISTEMAS" "EMC SOFTWARE" "GANSO SISTEMAS" "GDOOR" "LC SISTEMAS" "LINK PRO" "PROJECT 7" "QUESTOR" "RENSOFTWARE" "VTI"
 if errorlevel 1 goto :erro
 
 echo [2/2] Compilando DllsEmbutidas.res...
