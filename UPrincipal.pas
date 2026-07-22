@@ -66,7 +66,9 @@ begin
   FBtReportar.Font.Style := [fsBold];
   FBtReportar.OnClick := ReportarProblemaClick;
 
-  // Ajusta a janela para meia tela e centraliza no monitor, garantindo dimensao minima confortavel
+  // Abre maximizado (tela cheia). O tamanho abaixo e o que a janela assume ao
+  // ser restaurada pelo usuario -- sem ele, restaurar deixaria a janela no
+  // tamanho de design do formulario.
   W := Screen.WorkAreaWidth div 2;
   H := Screen.WorkAreaHeight div 2;
   if W < 900 then W := 900;
@@ -76,6 +78,8 @@ begin
   Height := H;
   Left := (Screen.WorkAreaWidth - Width) div 2;
   Top := (Screen.WorkAreaHeight - Height) div 2;
+
+  WindowState := wsMaximized;
 
   // Exibe a data de build com base na ultima modificacao do executavel principal
   ExePath := ParamStr(0);

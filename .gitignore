@@ -8,10 +8,11 @@ __recovery/
 *.dsk
 *.~*
 
-# Arquivos temporarios do auto-update
+# Arquivos temporarios do auto-update / extracao dos migradores
 *.exe.old
 *.exe.update
 CHANGELOG_PENDENTE.txt
+.migradores.ver
 
 # Config local do desenvolvedor
 MultiMigrador.dproj.local
