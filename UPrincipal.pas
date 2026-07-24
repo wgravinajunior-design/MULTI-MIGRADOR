@@ -80,10 +80,16 @@ begin
   ConfigurarTema;
   ConfigurarCrashHandler;  // Configura tratamento de exceções
 
-  // Campo de Filtro - dentro da barra azul
+  // Deixar título visível com cor branca
+  LabelTitulo.Font.Color := clWhite;
+  LabelSub.Font.Color := clWhite;
+  LabelBuild.Font.Color := clWhite;
+
+  // Campo de Filtro - lado direito da barra azul
   FEdFiltro := TEdit.Create(Self);
   FEdFiltro.Parent := PanelTopo;
-  FEdFiltro.SetBounds(20, 50, 400, 28);
+  FEdFiltro.SetBounds(PanelTopo.Width - 600, 50, 220, 28);
+  FEdFiltro.Anchors := [akTop, akRight];
   FEdFiltro.Font.Size := 10;
   FEdFiltro.Font.Name := 'Segoe UI';
   FEdFiltro.TextHint := 'Buscar sistema...';
@@ -94,7 +100,8 @@ begin
   // Label para notificação de nova versão - na barra azul
   FLblNovoVersao := TLabel.Create(Self);
   FLblNovoVersao.Parent := PanelTopo;
-  FLblNovoVersao.SetBounds(440, 50, 350, 28);
+  FLblNovoVersao.SetBounds(PanelTopo.Width - 370, 50, 180, 28);
+  FLblNovoVersao.Anchors := [akTop, akRight];
   FLblNovoVersao.Font.Style := [fsBold];
   FLblNovoVersao.Font.Color := $00FFD700;
   FLblNovoVersao.Font.Size := 10;
@@ -372,7 +379,7 @@ begin
       if SameText(Nome, 'Win32') or SameText(Nome, 'Win64') or
          SameText(Nome, '__history') or SameText(Nome, '__recovery') or
          SameText(Nome, '.git') or SameText(Nome, '.svn') or
-         SameText(Nome, '.vs') then
+         SameText(Nome, '.vs') or SameText(Nome, 'log') then
         Continue;
 
       // O nome do card será o próprio nome da pasta
