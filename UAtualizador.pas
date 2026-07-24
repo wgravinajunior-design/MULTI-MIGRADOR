@@ -527,7 +527,7 @@ end;
 
 procedure ProcessarStartup;
 var
-  Dir, ArqOld, ArqChange, Texto: string;
+  Dir, ArqOld, ArqChange: string;
 begin
   Dir := DirApp;
 
@@ -536,19 +536,10 @@ begin
   if TFile.Exists(ArqOld) then
     try TFile.Delete(ArqOld); except end;
 
-  // Mostra o changelog pendente uma unica vez.
+  // Remove o changelog pendente (nao mostra mais tela de novidades).
   ArqChange := TPath.Combine(Dir, ARQ_CHANGELOG);
   if TFile.Exists(ArqChange) then
-  begin
-    try
-      Texto := TFile.ReadAllText(ArqChange, TEncoding.UTF8);
-    except
-      Texto := '';
-    end;
     try TFile.Delete(ArqChange); except end;
-    if Trim(Texto) <> '' then
-      MostrarTexto('Novidades desta versao', Texto);
-  end;
 end;
 
 { ----- Dialogo de confirmacao ----- }
