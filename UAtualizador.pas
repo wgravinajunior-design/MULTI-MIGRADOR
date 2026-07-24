@@ -1,4 +1,4 @@
-ï»¿unit UAtualizador;
+unit UAtualizador;
 
 // Auto-atualizacao via GitHub Releases.
 //
@@ -24,7 +24,7 @@ uses
   System.SysUtils, System.Classes;
 
 const
-  APP_VERSAO   = '1.1.0';                    // <-- bump a cada release
+  APP_VERSAO   = '1.1.1';                    // <-- bump a cada release
   GITHUB_OWNER = 'wgravinajunior-design';
   GITHUB_REPO  = 'MULTI-MIGRADOR';
   NOME_EXE     = 'MultiMigrador.exe';
@@ -125,7 +125,7 @@ begin
     if (Timestamp = '') or (JsonData = '') then
       Exit;
 
-    // Verifica se cache ainda Ã© vÃ¡lido (< 24 horas)
+    // Verifica se cache ainda é válido (< 24 horas)
     if not TryStrToDateTime(Timestamp, DataHora) then
       Exit;
 
@@ -141,7 +141,7 @@ begin
       AInfo.Notas := Reg.ReadString('Notas');
       AInfo.TemAtualizacao := Reg.ReadBool('TemAtualizacao');
       Result := True;
-      LogarAcao('Usando cache de versÃ£o (verif. hÃ¡ ' +
+      LogarAcao('Usando cache de versão (verif. há ' +
         FormatDateTime('h:mm', Agora - DataHora) + ')');
     except
       Exit;
@@ -351,7 +351,7 @@ begin
   // Tenta usar cache primeiro
   if not ObterUltimoCheckCache(FInfo) then
   begin
-    // Se cache invÃ¡lido, consulta GitHub
+    // Se cache inválido, consulta GitHub
     FInfo := ConsultarUltimoRelease;
     // Salva resultado no cache
     if FInfo.Sucesso then
@@ -412,7 +412,7 @@ begin
         Exit;
       end;
 
-      // Valida SHA256 se disponÃ­vel
+      // Valida SHA256 se disponível
       if AInfo.SHA256 <> '' then
       begin
         var SHA256Calculado := CalcularSHA256Arquivo(ExeNovo);
