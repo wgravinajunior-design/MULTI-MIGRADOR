@@ -18,7 +18,7 @@ object FormPrincipal: TFormPrincipal
     Left = 0
     Top = 0
     Width = 840
-    Height = 88
+    Height = 95
     Align = alTop
     BevelOuter = bvNone
     Color = 5052682
@@ -26,7 +26,7 @@ object FormPrincipal: TFormPrincipal
     TabOrder = 0
     DesignSize = (
       840
-      88)
+      95)
     object ImageLogo: TImage
       Left = 16
       Top = 12

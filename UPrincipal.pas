@@ -72,7 +72,6 @@ var
   ExePath: string;
   BuildDate: TDateTime;
   W, H: Integer;
-  LblFiltro: TLabel;
 begin
   FExes := TStringList.Create;
   FSistemas := TStringList.Create;
@@ -81,55 +80,37 @@ begin
   ConfigurarTema;
   ConfigurarCrashHandler;  // Configura tratamento de exceções
 
-  // Botão "Reportar Problema" no canto direito do cabeçalho
-  FBtReportar := TButton.Create(Self);
-  FBtReportar.Parent := PanelTopo;
-  FBtReportar.SetBounds(PanelTopo.Width - 190, 46, 170, 30);
-  FBtReportar.Anchors := [akTop, akRight];
-  FBtReportar.Caption := 'REPORTAR PROBLEMA';
-  FBtReportar.Font.Style := [fsBold];
-  FBtReportar.OnClick := ReportarProblemaClick;
-
-  // Painel de Filtro e Ações
-  var PanelFiltro := TPanel.Create(Self);
-  PanelFiltro.Parent := Self;
-  PanelFiltro.Align := alTop;
-  PanelFiltro.Height := 80;
-  PanelFiltro.BevelOuter := bvNone;
-  PanelFiltro.ParentBackground := False;
-  PanelFiltro.Color := $00F5F5F5;
-  PanelFiltro.Padding.SetBounds(20, 15, 20, 15);
-
-  // Rótulo de Filtro
-  LblFiltro := TLabel.Create(Self);
-  LblFiltro.Parent := PanelFiltro;
-  LblFiltro.SetBounds(20, 10, 100, 15);
-  LblFiltro.Caption := '🔍 Buscar sistema:';
-  LblFiltro.Font.Style := [fsBold];
-  LblFiltro.Font.Size := 10;
-
-  // Campo de Filtro
+  // Campo de Filtro - dentro da barra azul
   FEdFiltro := TEdit.Create(Self);
-  FEdFiltro.Parent := PanelFiltro;
-  FEdFiltro.SetBounds(20, 28, 350, 32);
-  FEdFiltro.Font.Size := 11;
+  FEdFiltro.Parent := PanelTopo;
+  FEdFiltro.SetBounds(20, 50, 400, 28);
+  FEdFiltro.Font.Size := 10;
   FEdFiltro.Font.Name := 'Segoe UI';
-  FEdFiltro.TextHint := 'Digite o nome do migrador...';
+  FEdFiltro.TextHint := 'Buscar sistema...';
   FEdFiltro.OnChange := FiltroMudou;
   FEdFiltro.OnKeyDown := KeyDown;
   FEdFiltro.BorderStyle := bsSingle;
 
-  // Label para notificação de nova versão
+  // Label para notificação de nova versão - na barra azul
   FLblNovoVersao := TLabel.Create(Self);
-  FLblNovoVersao.Parent := PanelFiltro;
-  FLblNovoVersao.SetBounds(390, 28, 400, 32);
+  FLblNovoVersao.Parent := PanelTopo;
+  FLblNovoVersao.SetBounds(440, 50, 350, 28);
   FLblNovoVersao.Font.Style := [fsBold];
-  FLblNovoVersao.Font.Color := $00FF6600;
+  FLblNovoVersao.Font.Color := $00FFD700;
   FLblNovoVersao.Font.Size := 10;
   FLblNovoVersao.Alignment := taLeftJustify;
   FLblNovoVersao.Layout := tlCenter;
   FLblNovoVersao.Caption := '';
   FLblNovoVersao.Visible := False;
+
+  // Botão "Reportar Problema" no canto direito do cabeçalho
+  FBtReportar := TButton.Create(Self);
+  FBtReportar.Parent := PanelTopo;
+  FBtReportar.SetBounds(PanelTopo.Width - 190, 50, 170, 28);
+  FBtReportar.Anchors := [akTop, akRight];
+  FBtReportar.Caption := 'REPORTAR PROBLEMA';
+  FBtReportar.Font.Style := [fsBold];
+  FBtReportar.OnClick := ReportarProblemaClick;
 
   // Atalhos globais da janela
   Self.OnKeyDown := KeyDown;
@@ -430,10 +411,10 @@ begin
 
   Card := TPanel.Create(Self);
   Card.Parent := FlowCards;
-  Card.SetBounds(0, 0, 330, 200);  // Muito maior para melhor legibilidade
+  Card.SetBounds(0, 0, 280, 160);  // Reduzido para layout mais compacto
   Card.BevelOuter := bvNone;
   Card.AlignWithMargins := True;
-  Card.Margins.SetBounds(12, 12, 12, 12);  // Espaçamento generoso
+  Card.Margins.SetBounds(10, 10, 10, 10);  // Espaçamento adequado
   Card.ParentBackground := True;
   Card.ParentColor := True;
   Card.Cursor := crHandPoint;
@@ -448,7 +429,7 @@ begin
   // Sombra com blur efeito
   Sombra := TShape.Create(Self);
   Sombra.Parent := Card;
-  Sombra.SetBounds(5, 8, 320, 188);
+  Sombra.SetBounds(4, 6, 272, 152);
   Sombra.Anchors := [akLeft, akTop, akRight, akBottom];
   Sombra.Shape := stRoundRect;
   Sombra.Brush.Color := COR_SOMBRA;
@@ -458,7 +439,7 @@ begin
   // Fundo principal com borda mais refinada
   Fundo := TShape.Create(Self);
   Fundo.Parent := Card;
-  Fundo.SetBounds(0, 0, 320, 188);
+  Fundo.SetBounds(0, 0, 280, 160);
   Fundo.Anchors := [akLeft, akTop, akRight, akBottom];
   Fundo.Shape := stRoundRect;
   Fundo.Brush.Color := COR_CARD;
@@ -467,12 +448,12 @@ begin
   Fundo.Pen.Width := 1;
   Fundo.Enabled := False;
 
-  // Ícone maior
+  // Ícone
   if TemImagem then
   begin
     ImgIcon := TImage.Create(Self);
     ImgIcon.Parent := Card;
-    ImgIcon.SetBounds(16, 16, 110, 88);  // Muito maior
+    ImgIcon.SetBounds(12, 12, 80, 64);
     ImgIcon.Proportional := True;
     ImgIcon.Center := True;
     ImgIcon.Stretch := True;
@@ -486,24 +467,24 @@ begin
     ImgIcon.OnMouseEnter := CardMouseEnter;
     ImgIcon.OnMouseLeave := CardMouseLeave;
 
-    TextLeft := 136;
-    TextWidth := 174;
+    TextLeft := 100;
+    TextWidth := 170;
   end
   else
   begin
-    TextLeft := 20;
-    TextWidth := 290;
+    TextLeft := 16;
+    TextWidth := 252;
   end;
 
   // Nome do sistema em destaque
   LblNome := TLabel.Create(Self);
   LblNome.Parent := Card;
-  LblNome.SetBounds(TextLeft, 16, TextWidth, 50);
+  LblNome.SetBounds(TextLeft, 12, TextWidth, 36);
   LblNome.AutoSize := False;
   LblNome.WordWrap := True;
   LblNome.Caption := ANome;
   LblNome.Font.Name := 'Segoe UI';
-  LblNome.Font.Size := 14;  // Muito maior
+  LblNome.Font.Size := 12;
   LblNome.Font.Style := [fsBold];
   LblNome.Font.Color := $00333333;
   LblNome.Transparent := True;
@@ -514,10 +495,10 @@ begin
   // Subtítulo
   LblSubtitle := TLabel.Create(Self);
   LblSubtitle.Parent := Card;
-  LblSubtitle.SetBounds(TextLeft, 62, TextWidth, 20);
+  LblSubtitle.SetBounds(TextLeft, 48, TextWidth, 16);
   LblSubtitle.Caption := 'Migrador de Dados';
   LblSubtitle.Font.Name := 'Segoe UI';
-  LblSubtitle.Font.Size := 9;
+  LblSubtitle.Font.Size := 8;
   LblSubtitle.Font.Color := $00999999;
   LblSubtitle.Transparent := True;
   LblSubtitle.OnClick := CardClick;
@@ -527,7 +508,7 @@ begin
   // Status com mais destaque
   LblStatus := TLabel.Create(Self);
   LblStatus.Parent := Card;
-  LblStatus.SetBounds(TextLeft, 88, TextWidth, 80);
+  LblStatus.SetBounds(TextLeft, 66, TextWidth, 82);
   LblStatus.AutoSize := False;
   LblStatus.WordWrap := True;
   LblStatus.Font.Name := 'Segoe UI';

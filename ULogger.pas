@@ -1,8 +1,8 @@
 unit ULogger;
 
 // Sistema de log local para rastrear ações do Multi Migrador.
-// Logs são salvos em arquivo de texto na pasta de logs do sistema.
-// Estrutura: [Pasta do Sistema]/log/YYYY-MM-DD.log
+// Logs são salvos em arquivo de texto na pasta do AppData (oculta ao usuário).
+// Estrutura: %LOCALAPPDATA%\MultiMigrador\logs\YYYY-MM-DD.log
 
 interface
 
@@ -16,7 +16,7 @@ procedure ConfigurarPastaLogs(const APastaBase: string);
 implementation
 
 uses
-  System.SysUtils, System.IOUtils, System.Classes;
+  System.SysUtils, System.IOUtils, System.Classes, Winapi.Windows;
 
 var
   FPastaLogGlobal: string = '';
@@ -27,9 +27,11 @@ begin
     Result := IncludeTrailingPathDelimiter(FPastaLogGlobal)
   else
   begin
-    // Padrão: pasta do sistema + /log
+    // Salva em %LOCALAPPDATA%\MultiMigrador\logs - pasta oculta
     Result := IncludeTrailingPathDelimiter(
-      TPath.Combine(PastaSistemas, 'log'));
+      TPath.Combine(
+        TPath.GetHomePath + '\AppData\Local\MultiMigrador',
+        'logs'));
   end;
   ForceDirectories(Result);
 end;
