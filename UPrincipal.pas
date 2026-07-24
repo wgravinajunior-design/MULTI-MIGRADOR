@@ -20,6 +20,7 @@ type
     FlowCards: TFlowPanel;
     procedure FormCreate(Sender: TObject);
     procedure FormDestroy(Sender: TObject);
+    procedure ImageLogoClick(Sender: TObject);
   private
     FExes: TStringList;
     FSistemas: TStringList;
@@ -201,6 +202,11 @@ begin
   FExes.Free;
   FSistemas.Free;
   FMapaCards.Free;
+end;
+
+procedure TFormPrincipal.ImageLogoClick(Sender: TObject);
+begin
+  // Espaço reservado
 end;
 
 procedure TFormPrincipal.ReportarProblemaClick(Sender: TObject);
