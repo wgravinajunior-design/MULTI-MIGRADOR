@@ -1,4 +1,4 @@
-unit UAtualizador;
+﻿unit UAtualizador;
 
 // Auto-atualizacao via GitHub Releases.
 //
@@ -24,7 +24,7 @@ uses
   System.SysUtils, System.Classes;
 
 const
-  APP_VERSAO   = '1.0.7';                    // <-- bump a cada release
+  APP_VERSAO   = '1.0.8';                    // <-- bump a cada release
   GITHUB_OWNER = 'wgravinajunior-design';
   GITHUB_REPO  = 'MULTI-MIGRADOR';
   NOME_EXE     = 'MultiMigrador.exe';
@@ -37,6 +37,7 @@ type
     UrlDownload: string;      // browser_download_url do .exe
     Notas: string;            // corpo do release
     Erro: string;
+    SHA256: string;           // hash SHA256 para validacao
   end;
 
   TResultadoProc = reference to procedure(const AInfo: TInfoAtualizacao);
@@ -78,12 +79,14 @@ uses
   Winapi.Windows, Winapi.ShellAPI, System.IOUtils, System.Generics.Collections,
   System.Net.HttpClient,
   System.Net.URLClient, System.JSON, System.UITypes,
-  Vcl.Forms, Vcl.Controls, Vcl.StdCtrls, Vcl.Graphics, Vcl.Dialogs, Vcl.ExtCtrls;
+  Vcl.Forms, Vcl.Controls, Vcl.StdCtrls, Vcl.Graphics, Vcl.Dialogs, Vcl.ExtCtrls,
+  System.Win.Registry, ULogger, System.Hash;
 
 const
   ARQ_CHANGELOG = 'CHANGELOG_PENDENTE.txt';
   SUFIXO_OLD    = '.old';
   SUFIXO_UPDATE = '.update';
+  CACHE_HOURS   = 24;
 
 function DirApp: string;
 begin
@@ -93,6 +96,114 @@ end;
 function CaminhoExeAtual: string;
 begin
   Result := ParamStr(0);
+end;
+
+{ ----- Cache de Versao ----- }
+
+function ObterUltimoCheckCache(out AInfo: TInfoAtualizacao): Boolean;
+var
+  Reg: TRegistry;
+  Timestamp, JsonData: string;
+  DataHora, Agora: TDateTime;
+begin
+  Result := False;
+  FillChar(AInfo, SizeOf(AInfo), 0);
+
+  Reg := TRegistry.Create;
+  try
+    Reg.RootKey := HKEY_CURRENT_USER;
+    if not Reg.OpenKey('Software\MultiMigrador\Cache', False) then
+      Exit;
+
+    try
+      Timestamp := Reg.ReadString('VersoesCheckTime');
+      JsonData := Reg.ReadString('VersoesCheckData');
+    except
+      Exit;
+    end;
+
+    if (Timestamp = '') or (JsonData = '') then
+      Exit;
+
+    // Verifica se cache ainda é válido (< 24 horas)
+    if not TryStrToDateTime(Timestamp, DataHora) then
+      Exit;
+
+    Agora := Now;
+    if (Agora - DataHora) > (CACHE_HOURS / 24.0) then
+      Exit;
+
+    // Parse JSON do cache
+    try
+      AInfo.Sucesso := True;
+      AInfo.VersaoRemota := Reg.ReadString('VersaoRemota');
+      AInfo.UrlDownload := Reg.ReadString('UrlDownload');
+      AInfo.Notas := Reg.ReadString('Notas');
+      AInfo.TemAtualizacao := Reg.ReadBool('TemAtualizacao');
+      Result := True;
+      LogarAcao('Usando cache de versão (verif. há ' +
+        FormatDateTime('h:mm', Agora - DataHora) + ')');
+    except
+      Exit;
+    end;
+  finally
+    Reg.Free;
+  end;
+end;
+
+procedure SalvarCacheVersao(const AInfo: TInfoAtualizacao);
+var
+  Reg: TRegistry;
+begin
+  Reg := TRegistry.Create;
+  try
+    Reg.RootKey := HKEY_CURRENT_USER;
+    if Reg.OpenKey('Software\MultiMigrador\Cache', True) then
+    begin
+      Reg.WriteString('VersoesCheckTime', DateTimeToStr(Now));
+      Reg.WriteString('VersaoRemota', AInfo.VersaoRemota);
+      Reg.WriteString('UrlDownload', AInfo.UrlDownload);
+      Reg.WriteString('Notas', AInfo.Notas);
+      Reg.WriteBool('TemAtualizacao', AInfo.TemAtualizacao);
+    end;
+  finally
+    Reg.Free;
+  end;
+end;
+
+{ ----- Validacao de Integridade ----- }
+
+function CalcularSHA256Arquivo(const ACaminho: string): string;
+var
+  HashSHA2: THashSHA2;
+  FS: TFileStream;
+  Buffer: TBytes;
+  BytesRead: Int64;
+const
+  BUFFER_SIZE = 1024 * 1024; // 1MB chunks
+begin
+  if not TFile.Exists(ACaminho) then
+    Exit('');
+
+  FS := TFileStream.Create(ACaminho, fmOpenRead);
+  try
+    SetLength(Buffer, BUFFER_SIZE);
+    HashSHA2 := THashSHA2.Create;
+
+    repeat
+      BytesRead := FS.Read(Buffer[0], BUFFER_SIZE);
+      if BytesRead > 0 then
+      begin
+        SetLength(Buffer, BytesRead);
+        HashSHA2.Update(Buffer);
+        SetLength(Buffer, BUFFER_SIZE);
+      end;
+    until BytesRead = 0;
+
+    Result := HashSHA2.HashAsString;
+  finally
+    FS.Free;
+  end;
 end;
 
 { ----- Comparacao de versoes ----- }
@@ -237,7 +348,16 @@ end;
 
 procedure TAtualizadorThread.Execute;
 begin
-  FInfo := ConsultarUltimoRelease;
+  // Tenta usar cache primeiro
+  if not ObterUltimoCheckCache(FInfo) then
+  begin
+    // Se cache inválido, consulta GitHub
+    FInfo := ConsultarUltimoRelease;
+    // Salva resultado no cache
+    if FInfo.Sucesso then
+      SalvarCacheVersao(FInfo);
+  end;
+
   if Assigned(FCallback) then
     Synchronize(DispararCallback);
 end;
@@ -287,13 +407,39 @@ begin
       if Resp.StatusCode <> 200 then
       begin
         AErro := Format('Download falhou (HTTP %d).', [Resp.StatusCode]);
+        LogarErro('Download falhou: HTTP ' + IntToStr(Resp.StatusCode));
         if TFile.Exists(ExeNovo) then TFile.Delete(ExeNovo);
         Exit;
       end;
+
+      // Valida SHA256 se disponível
+      if AInfo.SHA256 <> '' then
+      begin
+        var SHA256Calculado := CalcularSHA256Arquivo(ExeNovo);
+        if SHA256Calculado = '' then
+        begin
+          AErro := 'Nao foi possivel calcular SHA256 do arquivo.';
+          LogarErro(AErro);
+          if TFile.Exists(ExeNovo) then TFile.Delete(ExeNovo);
+          Exit;
+        end;
+
+        if not SameText(SHA256Calculado, AInfo.SHA256) then
+        begin
+          AErro := 'Validacao SHA256 falhou. Arquivo pode estar corrompido.';
+          LogarErro('SHA256 esperado: ' + AInfo.SHA256);
+          LogarErro('SHA256 obtido: ' + SHA256Calculado);
+          if TFile.Exists(ExeNovo) then TFile.Delete(ExeNovo);
+          Exit;
+        end;
+        LogarAcao('SHA256 validado com sucesso');
+      end;
+
     except
       on E: Exception do
       begin
         AErro := 'Erro ao baixar: ' + E.Message;
+        LogarErro(AErro);
         if TFile.Exists(ExeNovo) then
           try TFile.Delete(ExeNovo); except end;
         Exit;

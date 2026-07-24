@@ -4,9 +4,10 @@ interface
 
 uses
   Winapi.Windows, Winapi.ShellAPI, System.SysUtils, System.Classes, System.IOUtils,
-  System.UITypes, Vcl.Graphics, Vcl.Controls, Vcl.Forms, Vcl.Dialogs,
+  System.UITypes, System.Generics.Collections, Vcl.Graphics, Vcl.Controls, Vcl.Forms, Vcl.Dialogs,
   Vcl.ExtCtrls, Vcl.StdCtrls, Vcl.Imaging.pngimage, Vcl.Imaging.jpeg,
-  UReportarProblema, UAtualizador, UMigradores;
+  UReportarProblema, UAtualizador, UMigradores, ULogger, UNotificacoes,
+  System.Win.Registry, UCrash;
 
 type
   TFormPrincipal = class(TForm)
@@ -20,9 +21,12 @@ type
     procedure FormCreate(Sender: TObject);
     procedure FormDestroy(Sender: TObject);
   private
-    FExes: TStringList; // caminho do exe de cada card, indexado por Card.Tag
-    FSistemas: TStringList; // nomes dos sistemas, para o dialogo de reporte
+    FExes: TStringList;
+    FSistemas: TStringList;
     FBtReportar: TButton;
+    FEdFiltro: TEdit;
+    FLblNovoVersao: TLabel;
+    FMapaCards: TDictionary<string, TPanel>;
     function PastaBase: string;
     function LocalizarExecutavel(const ADir: string): string;
     procedure CarregarSistemas;
@@ -32,6 +36,10 @@ type
     procedure CardMouseLeave(Sender: TObject);
     procedure ReportarProblemaClick(Sender: TObject);
     procedure AtualizacaoVerificada(const AInfo: TInfoAtualizacao);
+    procedure FiltroMudou(Sender: TObject);
+    procedure AtualizarVisibilidadeCards;
+    procedure ConfigurarTema;
+    procedure KeyDown(Sender: TObject; var Key: Word; Shift: TShiftState);
   end;
 
 var
@@ -42,22 +50,38 @@ implementation
 {$R *.dfm}
 
 const
+  // Paleta moderna e limpa
   COR_CARD        = clWhite;
-  COR_HOVER       = $00FAFAFA; // Cinza muito claro
-  COR_BORDA       = $00DFDFDF; // Cinza claro
-  COR_BORDA_HOVER = 5052682;   // Azul escuro do topo
-  COR_SOMBRA      = $00E6E6E6; // Cor da sombra
+  COR_HOVER       = $00F8F9FA;
+  COR_BORDA       = $00E0E0E0;
+  COR_BORDA_HOVER = $004A90E2;  // Azul moderno
+  COR_SOMBRA      = $00D6D6D6;
+  COR_ACENTO      = $004A90E2;  // Azul para hover
+
+  COR_CARD_ESCURO        = $002A2A2A;
+  COR_HOVER_ESCURO       = $00353535;
+  COR_BORDA_ESCURO       = $00404040;
+  COR_BORDA_HOVER_ESCURO = $004A90E2;
+  COR_SOMBRA_ESCURO      = $001A1A1A;
+
+  COR_FUNDO_PRINCIPAL    = $00FAFBFC;
+  COR_FUNDO_ESCURO       = $001E1E1E;
 
 procedure TFormPrincipal.FormCreate(Sender: TObject);
 var
   ExePath: string;
   BuildDate: TDateTime;
   W, H: Integer;
+  LblFiltro: TLabel;
 begin
   FExes := TStringList.Create;
   FSistemas := TStringList.Create;
+  FMapaCards := TDictionary<string, TPanel>.Create;
 
-  // Botao "Reportar Problema" no canto direito do cabecalho, ancorado a direita.
+  ConfigurarTema;
+  ConfigurarCrashHandler;  // Configura tratamento de exceções
+
+  // Botão "Reportar Problema" no canto direito do cabeçalho
   FBtReportar := TButton.Create(Self);
   FBtReportar.Parent := PanelTopo;
   FBtReportar.SetBounds(PanelTopo.Width - 190, 46, 170, 30);
@@ -65,6 +89,50 @@ begin
   FBtReportar.Caption := 'REPORTAR PROBLEMA';
   FBtReportar.Font.Style := [fsBold];
   FBtReportar.OnClick := ReportarProblemaClick;
+
+  // Painel de Filtro e Ações
+  var PanelFiltro := TPanel.Create(Self);
+  PanelFiltro.Parent := Self;
+  PanelFiltro.Align := alTop;
+  PanelFiltro.Height := 80;
+  PanelFiltro.BevelOuter := bvNone;
+  PanelFiltro.ParentBackground := False;
+  PanelFiltro.Color := $00F5F5F5;
+  PanelFiltro.Padding.SetBounds(20, 15, 20, 15);
+
+  // Rótulo de Filtro
+  LblFiltro := TLabel.Create(Self);
+  LblFiltro.Parent := PanelFiltro;
+  LblFiltro.SetBounds(20, 10, 100, 15);
+  LblFiltro.Caption := '🔍 Buscar sistema:';
+  LblFiltro.Font.Style := [fsBold];
+  LblFiltro.Font.Size := 10;
+
+  // Campo de Filtro
+  FEdFiltro := TEdit.Create(Self);
+  FEdFiltro.Parent := PanelFiltro;
+  FEdFiltro.SetBounds(20, 28, 350, 32);
+  FEdFiltro.Font.Size := 11;
+  FEdFiltro.Font.Name := 'Segoe UI';
+  FEdFiltro.TextHint := 'Digite o nome do migrador...';
+  FEdFiltro.OnChange := FiltroMudou;
+  FEdFiltro.OnKeyDown := KeyDown;
+  FEdFiltro.BorderStyle := bsSingle;
+
+  // Label para notificação de nova versão
+  FLblNovoVersao := TLabel.Create(Self);
+  FLblNovoVersao.Parent := PanelFiltro;
+  FLblNovoVersao.SetBounds(390, 28, 400, 32);
+  FLblNovoVersao.Font.Style := [fsBold];
+  FLblNovoVersao.Font.Color := $00FF6600;
+  FLblNovoVersao.Font.Size := 10;
+  FLblNovoVersao.Alignment := taLeftJustify;
+  FLblNovoVersao.Layout := tlCenter;
+  FLblNovoVersao.Caption := '';
+  FLblNovoVersao.Visible := False;
+
+  // Atalhos globais da janela
+  Self.OnKeyDown := KeyDown;
 
   // Abre maximizado (tela cheia). O tamanho abaixo e o que a janela assume ao
   // ser restaurada pelo usuario -- sem ele, restaurar deixaria a janela no
@@ -108,33 +176,133 @@ var
   Erro: string;
 begin
   if not AInfo.Sucesso then
-    Exit; // falha de rede/GitHub: silencioso, nao incomoda o usuario
+  begin
+    LogarErro('Falha ao verificar atualizações: ' + AInfo.Erro);
+    Exit;
+  end;
+
   if not AInfo.TemAtualizacao then
     Exit;
 
+  NotificarAtualizacaoDisponivel(AInfo.VersaoRemota);
+
+  FLblNovoVersao.Caption := '🔔 Nova versão ' + AInfo.VersaoRemota + ' disponível!';
+  FLblNovoVersao.Visible := True;
+  LogarAcao('Nova versão disponível: ' + AInfo.VersaoRemota);
+
   if not PerguntarAtualizar(AInfo) then
-    Exit; // usuario escolheu "Nao"
+    Exit;
 
   if BaixarEInstalar(AInfo, Erro) then
   begin
-    MessageDlg('Atualizacao baixada. O sistema sera reiniciado na nova versao.',
+    LogarAcao('Atualizado para versão ' + AInfo.VersaoRemota);
+    MessageDlg('Atualização baixada. O sistema será reiniciado na nova versão.',
       mtInformation, [mbOK], 0);
-    ReiniciarApp;      // abre o novo exe
-    Application.Terminate; // fecha o atual
+    ReiniciarApp;
+    Application.Terminate;
   end
   else
-    MessageDlg('Nao foi possivel atualizar:'#13#10 + Erro, mtError, [mbOK], 0);
+  begin
+    LogarErro('Falha ao baixar/instalar atualização: ' + Erro);
+    MessageDlg('Não foi possível atualizar:'#13#10 + Erro, mtError, [mbOK], 0);
+  end;
 end;
 
 procedure TFormPrincipal.FormDestroy(Sender: TObject);
 begin
   FExes.Free;
   FSistemas.Free;
+  FMapaCards.Free;
 end;
 
 procedure TFormPrincipal.ReportarProblemaClick(Sender: TObject);
 begin
+  LogarAcao('Abriu formulário "Reportar Problema"');
   MostrarReportarProblema(FSistemas);
+end;
+
+procedure TFormPrincipal.ConfigurarTema;
+var
+  Reg: TRegistry;
+  EhEscuro: Boolean;
+begin
+  EhEscuro := False;
+  Reg := TRegistry.Create;
+  try
+    Reg.RootKey := HKEY_CURRENT_USER;
+    if Reg.OpenKey('Software\Microsoft\Windows\CurrentVersion\Themes\Personalize', False) then
+      try
+        EhEscuro := Reg.ReadInteger('AppsUseLightTheme') = 0;
+      except
+      end;
+  finally
+    Reg.Free;
+  end;
+
+  if EhEscuro then
+  begin
+    Color := COR_FUNDO_ESCURO;
+    PanelTopo.Color := $00333333;
+    LabelTitulo.Font.Color := clWhite;
+    LabelSub.Font.Color := clWhite;
+    LabelBuild.Font.Color := clWhite;
+    ScrollBox.Color := COR_FUNDO_ESCURO;
+    FlowCards.Color := COR_FUNDO_ESCURO;
+  end
+  else
+  begin
+    Color := COR_FUNDO_PRINCIPAL;
+    ScrollBox.Color := COR_FUNDO_PRINCIPAL;
+    FlowCards.Color := COR_FUNDO_PRINCIPAL;
+  end;
+
+  // Estilo dos labels
+  LabelTitulo.Font.Size := 24;
+  LabelSub.Font.Size := 11;
+  LabelBuild.Font.Size := 9;
+end;
+
+procedure TFormPrincipal.FiltroMudou(Sender: TObject);
+begin
+  AtualizarVisibilidadeCards;
+end;
+
+procedure TFormPrincipal.AtualizarVisibilidadeCards;
+var
+  Filtro: string;
+  Item: TPair<string, TPanel>;
+begin
+  Filtro := LowerCase(Trim(FEdFiltro.Text));
+
+  for Item in FMapaCards do
+  begin
+    if Filtro = '' then
+      Item.Value.Visible := True
+    else
+      Item.Value.Visible := Pos(Filtro, LowerCase(Item.Key)) > 0;
+  end;
+
+  ScrollBox.VertScrollBar.Position := 0;
+end;
+
+procedure TFormPrincipal.KeyDown(Sender: TObject; var Key: Word; Shift: TShiftState);
+begin
+  // Ctrl+Q para sair
+  if (Key = Ord('Q')) and (ssCtrl in Shift) then
+  begin
+    Application.Terminate;
+  end
+  // Ctrl+U para verificar atualizações agora
+  else if (Key = Ord('U')) and (ssCtrl in Shift) then
+  begin
+    MessageDlg('Verificando atualizações...', mtInformation, [mbOK], 0);
+    VerificarAtualizacoesAsync(AtualizacaoVerificada);
+  end
+  // Alt+R para reportar problema
+  else if (Key = Ord('R')) and (ssAlt in Shift) then
+  begin
+    ReportarProblemaClick(nil);
+  end;
 end;
 
 // Sobe a partir da pasta do executavel ate achar a raiz do projeto (onde fica o .dpr).
@@ -242,12 +410,13 @@ procedure TFormPrincipal.CriarCard(const ANome, ACaminho: string);
 var
   Card: TPanel;
   Fundo, Sombra: TShape;
-  LblNome, LblStatus: TLabel;
+  LblNome, LblStatus, LblSubtitle: TLabel;
   ImgIcon: TImage;
   Exe, PngFile: string;
   PngFiles: TArray<string>;
   TemImagem: Boolean;
   TextLeft, TextWidth: Integer;
+  BadgeStatus: TShape;
 begin
   Exe := LocalizarExecutavel(ACaminho);
 
@@ -261,10 +430,10 @@ begin
 
   Card := TPanel.Create(Self);
   Card.Parent := FlowCards;
-  Card.SetBounds(0, 0, 280, 140);
+  Card.SetBounds(0, 0, 330, 200);  // Muito maior para melhor legibilidade
   Card.BevelOuter := bvNone;
   Card.AlignWithMargins := True;
-  Card.Margins.SetBounds(0, 0, 20, 20);
+  Card.Margins.SetBounds(12, 12, 12, 12);  // Espaçamento generoso
   Card.ParentBackground := True;
   Card.ParentColor := True;
   Card.Cursor := crHandPoint;
@@ -274,19 +443,22 @@ begin
   Card.OnClick := CardClick;
   Card.OnMouseEnter := CardMouseEnter;
   Card.OnMouseLeave := CardMouseLeave;
+  FMapaCards.Add(ANome, Card);
 
+  // Sombra com blur efeito
   Sombra := TShape.Create(Self);
   Sombra.Parent := Card;
-  Sombra.SetBounds(3, 4, 275, 134);
+  Sombra.SetBounds(5, 8, 320, 188);
   Sombra.Anchors := [akLeft, akTop, akRight, akBottom];
   Sombra.Shape := stRoundRect;
   Sombra.Brush.Color := COR_SOMBRA;
   Sombra.Pen.Style := psClear;
   Sombra.Enabled := False;
 
+  // Fundo principal com borda mais refinada
   Fundo := TShape.Create(Self);
   Fundo.Parent := Card;
-  Fundo.SetBounds(0, 0, 275, 134);
+  Fundo.SetBounds(0, 0, 320, 188);
   Fundo.Anchors := [akLeft, akTop, akRight, akBottom];
   Fundo.Shape := stRoundRect;
   Fundo.Brush.Color := COR_CARD;
@@ -295,11 +467,12 @@ begin
   Fundo.Pen.Width := 1;
   Fundo.Enabled := False;
 
+  // Ícone maior
   if TemImagem then
   begin
     ImgIcon := TImage.Create(Self);
     ImgIcon.Parent := Card;
-    ImgIcon.SetBounds(16, 16, 68, 52);
+    ImgIcon.SetBounds(16, 16, 110, 88);  // Muito maior
     ImgIcon.Proportional := True;
     ImgIcon.Center := True;
     ImgIcon.Stretch := True;
@@ -313,23 +486,24 @@ begin
     ImgIcon.OnMouseEnter := CardMouseEnter;
     ImgIcon.OnMouseLeave := CardMouseLeave;
 
-    TextLeft := 92;
-    TextWidth := 168;
+    TextLeft := 136;
+    TextWidth := 174;
   end
   else
   begin
     TextLeft := 20;
-    TextWidth := 240;
+    TextWidth := 290;
   end;
 
+  // Nome do sistema em destaque
   LblNome := TLabel.Create(Self);
   LblNome.Parent := Card;
-  LblNome.SetBounds(TextLeft, 14, TextWidth, 44);
+  LblNome.SetBounds(TextLeft, 16, TextWidth, 50);
   LblNome.AutoSize := False;
   LblNome.WordWrap := True;
   LblNome.Caption := ANome;
   LblNome.Font.Name := 'Segoe UI';
-  LblNome.Font.Size := 12;
+  LblNome.Font.Size := 14;  // Muito maior
   LblNome.Font.Style := [fsBold];
   LblNome.Font.Color := $00333333;
   LblNome.Transparent := True;
@@ -337,9 +511,23 @@ begin
   LblNome.OnMouseEnter := CardMouseEnter;
   LblNome.OnMouseLeave := CardMouseLeave;
 
+  // Subtítulo
+  LblSubtitle := TLabel.Create(Self);
+  LblSubtitle.Parent := Card;
+  LblSubtitle.SetBounds(TextLeft, 62, TextWidth, 20);
+  LblSubtitle.Caption := 'Migrador de Dados';
+  LblSubtitle.Font.Name := 'Segoe UI';
+  LblSubtitle.Font.Size := 9;
+  LblSubtitle.Font.Color := $00999999;
+  LblSubtitle.Transparent := True;
+  LblSubtitle.OnClick := CardClick;
+  LblSubtitle.OnMouseEnter := CardMouseEnter;
+  LblSubtitle.OnMouseLeave := CardMouseLeave;
+
+  // Status com mais destaque
   LblStatus := TLabel.Create(Self);
   LblStatus.Parent := Card;
-  LblStatus.SetBounds(TextLeft, 60, TextWidth, 64);
+  LblStatus.SetBounds(TextLeft, 88, TextWidth, 80);
   LblStatus.AutoSize := False;
   LblStatus.WordWrap := True;
   LblStatus.Font.Name := 'Segoe UI';
@@ -348,19 +536,31 @@ begin
   LblStatus.OnClick := CardClick;
   LblStatus.OnMouseEnter := CardMouseEnter;
   LblStatus.OnMouseLeave := CardMouseLeave;
-  
+
+  // Badge de status
+  BadgeStatus := TShape.Create(Self);
+  BadgeStatus.Parent := Card;
+  BadgeStatus.Shape := stCircle;
+  BadgeStatus.Enabled := False;
+
   if Exe <> '' then
   begin
     LblStatus.Caption := ExtractRelativePath(IncludeTrailingPathDelimiter(ACaminho), Exe) +
-      #13#10'(' + FormatDateTime('dd/mm/yyyy hh:nn', TFile.GetLastWriteTime(Exe)) + ')';
+      #13#10'Versão: ' + FormatDateTime('dd/mm/yyyy', TFile.GetLastWriteTime(Exe));
     LblStatus.Font.Color := clGrayText;
+    BadgeStatus.Brush.Color := $0040C040;  // Verde
+    BadgeStatus.SetBounds(TextLeft + TextWidth - 20, 16, 16, 16);
   end
   else
   begin
-    LblStatus.Caption := 'Executável não encontrado';
+    LblStatus.Caption := '⚠️ Executável não encontrado';
     LblStatus.Font.Color := $004040FF;
+    BadgeStatus.Brush.Color := $00FF4040;  // Vermelho
+    BadgeStatus.SetBounds(TextLeft + TextWidth - 20, 16, 16, 16);
     Card.Cursor := crDefault;
   end;
+
+  BadgeStatus.Pen.Style := psClear;
 end;
 
 // Os labels tambem disparam o clique, entao subimos ate o card.
@@ -382,14 +582,19 @@ begin
   Exe := FExes[Card.Tag];
   if Exe = '' then
   begin
-    MessageDlg('Nenhum executavel (.exe) foi encontrado na pasta:'#13#10 + Card.Hint,
+    LogarErro('Executável não encontrado na pasta: ' + Card.Hint);
+    MessageDlg('Nenhum executável (.exe) foi encontrado na pasta:'#13#10 + Card.Hint,
       mtWarning, [mbOK], 0);
     Exit;
   end;
 
+  LogarAcao('Abriu: ' + ExtractFileName(Exe));
   if ShellExecute(Handle, 'open', PChar(Exe), nil,
        PChar(ExtractFilePath(Exe)), SW_SHOWNORMAL) <= 32 then
-    MessageDlg('Nao foi possivel iniciar:'#13#10 + Exe, mtError, [mbOK], 0);
+  begin
+    LogarErro('Falha ao iniciar: ' + Exe);
+    MessageDlg('Não foi possível iniciar:'#13#10 + Exe, mtError, [mbOK], 0);
+  end;
 end;
 
 procedure TFormPrincipal.CardMouseEnter(Sender: TObject);

@@ -10,12 +10,16 @@ interface
 uses
   Winapi.Windows, Winapi.Messages, System.SysUtils, System.Classes, System.UITypes,
   Vcl.Graphics, Vcl.Controls, Vcl.Forms, Vcl.Dialogs, Vcl.StdCtrls,
-  Vcl.ExtCtrls, Vcl.Imaging.jpeg, Vcl.Imaging.pngimage;
+  Vcl.ExtCtrls, Vcl.Imaging.jpeg, Vcl.Imaging.pngimage,
+  ULogger, UNotificacoes;
 
 type
   TFormReportarProblema = class(TForm)
   private
     cbSistema: TComboBox;
+    edEmail: TEdit;
+    edRevenda: TEdit;
+    edLinkBase: TEdit;
     lbOrigem: TListBox;
     lbDestino: TListBox;
     mDescricao: TMemo;
@@ -44,53 +48,138 @@ implementation
 
 uses
   IdSMTP, IdMessage, IdSSLOpenSSL, IdExplicitTLSClientServerBase,
-  IdAttachmentFile, IdText, IdEMailAddress;
+  IdAttachmentFile, IdText, IdEMailAddress, System.Win.Registry,
+  UConfiguracao;
+
+// Funções auxiliares
+function EhEmailValido(const AEmail: string): Boolean;
+begin
+  Result := (Pos('@', AEmail) > 1) and
+            (Pos('.', AEmail, Pos('@', AEmail)) > Pos('@', AEmail));
+end;
+
+function EhTemaEscuro: Boolean;
+var
+  Reg: TRegistry;
+begin
+  Result := False;
+  Reg := TRegistry.Create;
+  try
+    Reg.RootKey := HKEY_CURRENT_USER;
+    if Reg.OpenKey('Software\Microsoft\Windows\CurrentVersion\Themes\Personalize', False) then
+      try
+        Result := Reg.ReadInteger('AppsUseLightTheme') = 0;
+      except
+        Result := False;
+      end;
+  finally
+    Reg.Free;
+  end;
+end;
+
+function SalvarDadosFormulario(const AEmail, ARevenda: string): Boolean;
+var
+  Reg: TRegistry;
+begin
+  Result := False;
+  Reg := TRegistry.Create;
+  try
+    Reg.RootKey := HKEY_CURRENT_USER;
+    if Reg.OpenKey('Software\MultiMigrador', True) then
+    begin
+      Reg.WriteString('Email', AEmail);
+      Reg.WriteString('Revenda', ARevenda);
+      Result := True;
+    end;
+  finally
+    Reg.Free;
+  end;
+end;
+
+procedure CarregarDadosFormulario(out AEmail, ARevenda: string);
+var
+  Reg: TRegistry;
+begin
+  AEmail := '';
+  ARevenda := '';
+  Reg := TRegistry.Create;
+  try
+    Reg.RootKey := HKEY_CURRENT_USER;
+    if Reg.OpenKey('Software\MultiMigrador', False) then
+    begin
+      try
+        AEmail := Reg.ReadString('Email');
+      except
+        AEmail := '';
+      end;
+      try
+        ARevenda := Reg.ReadString('Revenda');
+      except
+        ARevenda := '';
+      end;
+    end;
+  finally
+    Reg.Free;
+  end;
+end;
 
 const
-  SMTP_HOST      = 'smtp.titan.email';
-  SMTP_PORTA     = 465;
-  SMTP_USUARIO   = 'migracao@goupsistemas.com';
-  SMTP_SENHA     = 'Goup226457#$';
-  SMTP_DESTINO   = 'migracao@goupsistemas.com';
-  SMTP_ASSUNTO   = 'Correcao Multi Migrador';
+  SMTP_REMETENTE = 'CORREÇÃO MULTI MIGRADOR';
 
-  PLACEHOLDER = 'Faca upload das imagens do sistema de origem marcando os campos ' +
-    'necessarios e do sistema de destino com os campos que estao errados.';
+  PLACEHOLDER = 'ORIENTAÇÕES:' + sLineBreak + sLineBreak +
+    '1 - Vincule print do sistema de origem com campos e dados corretos destacados' + sLineBreak +
+    '2 - Vincule print do sistema de destino com os mesmos campos e dados que estao errados e destacados' + sLineBreak +
+    '3 - Coloque a base no OneDrive ou Google Drive e compartilhe o link e nos envie para analise' + sLineBreak +
+    '4 - As correccoes sao liberadas ate 5 dias uteis' + sLineBreak +
+    '5 - Os migradores serao atualizados automaticamente' + sLineBreak + sLineBreak +
+    'Observacoes adicionais:';
 
-  COR_TOPO   = 5052682;    // mesmo azul do cabecalho principal
-  COR_FUNDO  = 15921906;
-  COR_HINT   = clGrayText;
-  COR_TEXTO  = $00333333;
+  COR_TOPO_CLARO   = 5052682;    // mesmo azul do cabecalho principal
+  COR_FUNDO_CLARO  = 15921906;
+  COR_HINT_CLARO   = clGrayText;
+  COR_TEXTO_CLARO  = $00333333;
+
+  COR_TOPO_ESCURO   = $002A2A2A;
+  COR_FUNDO_ESCURO  = $001E1E1E;
+  COR_HINT_ESCURO   = $00666666;
+  COR_TEXTO_ESCURO  = $00E0E0E0;
+
+  MAX_TENTATIVAS_ENVIO = 3;
 
 type
   // Thread de envio: mantem a UI responsiva enquanto o Indy conversa com o SMTP.
   TEnvioThread = class(TThread)
   private
-    FSistema, FDescricao: string;
+    FSistema, FDescricao, FEmail, FRevenda, FLinkBase: string;
     FOrigem, FDestino: TArray<string>;
     FErro: string;
+    FTentativa: Integer;
+    procedure EnviarComRetry;
   protected
     procedure Execute; override;
   public
-    constructor Create(const ASistema, ADescricao: string;
+    constructor Create(const ASistema, ADescricao, AEmail, ARevenda, ALinkBase: string;
       const AOrigem, ADestino: TArray<string>);
     property Erro: string read FErro;
   end;
 
 { TEnvioThread }
 
-constructor TEnvioThread.Create(const ASistema, ADescricao: string;
+constructor TEnvioThread.Create(const ASistema, ADescricao, AEmail, ARevenda, ALinkBase: string;
   const AOrigem, ADestino: TArray<string>);
 begin
   inherited Create(True);          // criada suspensa; iniciada pelo chamador
   FreeOnTerminate := False;        // o dialogo le Erro no OnTerminate e libera
   FSistema := ASistema;
   FDescricao := ADescricao;
+  FEmail := AEmail;
+  FRevenda := ARevenda;
+  FLinkBase := ALinkBase;
   FOrigem := AOrigem;
   FDestino := ADestino;
 end;
 
-procedure TEnvioThread.Execute;
+procedure TEnvioThread.EnviarComRetry;
 var
   SMTP: TIdSMTP;
   SSL: TIdSSLIOHandlerSocketOpenSSL;
@@ -98,35 +187,42 @@ var
   Corpo: TIdText;
   Arq: string;
 begin
-  FErro := '';
   SMTP := TIdSMTP.Create(nil);
   SSL := TIdSSLIOHandlerSocketOpenSSL.Create(nil);
   Msg := TIdMessage.Create(nil);
   try
-    // --- Transporte seguro (TLS) sobre conexao segura (SSL implicito na 465) ---
     SSL.SSLOptions.Method := sslvTLSv1_2;
     SSL.SSLOptions.SSLVersions := [sslvTLSv1_2];
     SSL.SSLOptions.Mode := sslmClient;
 
     SMTP.IOHandler := SSL;
-    SMTP.Host := SMTP_HOST;
-    SMTP.Port := SMTP_PORTA;
-    SMTP.UseTLS := utUseImplicitTLS;      // 465 = SSL desde o handshake
-    SMTP.Username := SMTP_USUARIO;
-    SMTP.Password := SMTP_SENHA;
+    SMTP.Host := ObterSMTPHost;
+    SMTP.Port := ObterSMTPPorta;
+    SMTP.UseTLS := utUseImplicitTLS;
+    SMTP.Username := ObterSMTPUsuario;
+    SMTP.Password := ObterSMTPSenha;
     SMTP.AuthType := satDefault;
+    SMTP.ConnectTimeout := 10000;
+    SMTP.ReadTimeout := 15000;
 
-    // --- Monta a mensagem ---
-    Msg.From.Address := SMTP_USUARIO;
-    Msg.From.Name := 'Multi Migrador';
-    Msg.Recipients.EMailAddresses := SMTP_DESTINO;
-    Msg.Subject := SMTP_ASSUNTO + ' - ' + FSistema;
+    Msg.From.Address := ObterSMTPUsuario;
+    Msg.From.Name := SMTP_REMETENTE;
+    Msg.Recipients.EMailAddresses := ObterSMTPDestino;
+    Msg.Subject := 'Correção Migrador (' + FSistema + ')';
 
     Corpo := TIdText.Create(Msg.MessageParts, nil);
     Corpo.ContentType := 'text/plain; charset=utf-8';
     Corpo.Body.Text :=
-      'Sistema: ' + FSistema + sLineBreak + sLineBreak +
-      'Descricao do problema:' + sLineBreak +
+      'Sistema: ' + FSistema + sLineBreak +
+      'E-mail: ' + FEmail + sLineBreak +
+      'Revenda: ' + FRevenda + sLineBreak;
+
+    if FLinkBase <> '' then
+      Corpo.Body.Text := Corpo.Body.Text +
+        'Link da Base: ' + FLinkBase + sLineBreak;
+
+    Corpo.Body.Text := Corpo.Body.Text +
+      sLineBreak + 'Observacoes:' + sLineBreak +
       FDescricao + sLineBreak + sLineBreak +
       'Imagens do sistema de ORIGEM: ' + IntToStr(Length(FOrigem)) + sLineBreak +
       'Imagens do sistema de DESTINO: ' + IntToStr(Length(FDestino)) + sLineBreak;
@@ -141,24 +237,42 @@ begin
         with TIdAttachmentFile.Create(Msg.MessageParts, Arq) do
           FileName := 'DESTINO_' + ExtractFileName(Arq);
 
-    // O corpo deve ser tratado como parte principal do multipart.
     Msg.ContentType := 'multipart/mixed';
 
+    SMTP.Connect;
     try
-      SMTP.Connect;
-      try
-        SMTP.Send(Msg);
-      finally
-        SMTP.Disconnect;
-      end;
-    except
-      on E: Exception do
-        FErro := E.ClassName + ': ' + E.Message;
+      SMTP.Send(Msg);
+      LogarAcao('Problema reportado: ' + FSistema);
+    finally
+      SMTP.Disconnect;
     end;
   finally
     Msg.Free;
     SSL.Free;
     SMTP.Free;
+  end;
+end;
+
+procedure TEnvioThread.Execute;
+begin
+  FErro := '';
+  FTentativa := 0;
+
+  while FTentativa < MAX_TENTATIVAS_ENVIO do
+  begin
+    try
+      Inc(FTentativa);
+      EnviarComRetry;
+      Exit;  // Sucesso
+    except
+      on E: Exception do
+      begin
+        FErro := E.ClassName + ': ' + E.Message;
+        LogarErro('Tentativa ' + IntToStr(FTentativa) + ' falhou: ' + FErro);
+        if FTentativa < MAX_TENTATIVAS_ENVIO then
+          Sleep(2000 * FTentativa);  // Backoff exponencial
+      end;
+    end;
   end;
 end;
 
@@ -174,17 +288,39 @@ end;
 procedure TFormReportarProblema.MontarUI(const ASistemas: TStrings);
 var
   Topo: TPanel;
-  lblTit, lblSis, lblOri, lblDes, lblDsc: TLabel;
+  lblTit, lblSis, lblEmail, lblRevenda, lblLinkBase, lblOri, lblDes, lblDsc: TLabel;
   btAddOri, btDelOri, btAddDes, btDelDes: TButton;
+  CorTopo, CorFundo, CorTexto, CorHint: TColor;
+  EmailSalvo, RevendaSalva: string;
 begin
   Caption := 'Reportar Problema';
   BorderStyle := bsDialog;
   Position := poScreenCenter;
   ClientWidth := 720;
-  ClientHeight := 560;
-  Color := COR_FUNDO;
+  ClientHeight := 680;
+
+  // Tema automático
+  if EhTemaEscuro then
+  begin
+    CorTopo := COR_TOPO_ESCURO;
+    CorFundo := COR_FUNDO_ESCURO;
+    CorTexto := COR_TEXTO_ESCURO;
+    CorHint := COR_HINT_ESCURO;
+  end
+  else
+  begin
+    CorTopo := COR_TOPO_CLARO;
+    CorFundo := COR_FUNDO_CLARO;
+    CorTexto := COR_TEXTO_CLARO;
+    CorHint := COR_HINT_CLARO;
+  end;
+
+  Color := CorFundo;
   Font.Name := 'Segoe UI';
   Font.Height := -12;
+
+  // Carrega dados salvos anteriormente
+  CarregarDadosFormulario(EmailSalvo, RevendaSalva);
 
   // Cabecalho
   Topo := TPanel.Create(Self);
@@ -193,7 +329,7 @@ begin
   Topo.Height := 56;
   Topo.BevelOuter := bvNone;
   Topo.ParentBackground := False;
-  Topo.Color := COR_TOPO;
+  Topo.Color := CorTopo;
 
   lblTit := TLabel.Create(Self);
   lblTit.Parent := Topo;
@@ -208,9 +344,9 @@ begin
   lblSis := TLabel.Create(Self);
   lblSis.Parent := Self;
   lblSis.SetBounds(20, 74, 200, 15);
-  lblSis.Caption := 'Sistema';
+  lblSis.Caption := 'Sistema *';
   lblSis.Font.Style := [fsBold];
-  lblSis.Font.Color := COR_TEXTO;
+  lblSis.Font.Color := CorTexto;
 
   cbSistema := TComboBox.Create(Self);
   cbSistema.Parent := Self;
@@ -221,27 +357,65 @@ begin
   if cbSistema.Items.Count > 0 then
     cbSistema.ItemIndex := 0;
 
+  // E-mail
+  lblEmail := TLabel.Create(Self);
+  lblEmail.Parent := Self;
+  lblEmail.SetBounds(20, 128, 200, 15);
+  lblEmail.Caption := 'E-mail *';
+  lblEmail.Font.Style := [fsBold];
+  lblEmail.Font.Color := CorTexto;
+
+  edEmail := TEdit.Create(Self);
+  edEmail.Parent := Self;
+  edEmail.SetBounds(20, 146, 330, 24);
+  edEmail.Text := EmailSalvo;
+
+  // Revenda
+  lblRevenda := TLabel.Create(Self);
+  lblRevenda.Parent := Self;
+  lblRevenda.SetBounds(370, 128, 330, 15);
+  lblRevenda.Caption := 'Nome da Revenda *';
+  lblRevenda.Font.Style := [fsBold];
+  lblRevenda.Font.Color := CorTexto;
+
+  edRevenda := TEdit.Create(Self);
+  edRevenda.Parent := Self;
+  edRevenda.SetBounds(370, 146, 330, 24);
+  edRevenda.Text := RevendaSalva;
+
+  // Link da Base de Migracao
+  lblLinkBase := TLabel.Create(Self);
+  lblLinkBase.Parent := Self;
+  lblLinkBase.SetBounds(20, 180, 680, 15);
+  lblLinkBase.Caption := 'Link da Base de Migracao (OneDrive / Google Drive)';
+  lblLinkBase.Font.Style := [fsBold];
+  lblLinkBase.Font.Color := CorTexto;
+
+  edLinkBase := TEdit.Create(Self);
+  edLinkBase.Parent := Self;
+  edLinkBase.SetBounds(20, 198, 680, 24);
+
   // Imagens de ORIGEM
   lblOri := TLabel.Create(Self);
   lblOri.Parent := Self;
-  lblOri.SetBounds(20, 128, 320, 15);
+  lblOri.SetBounds(20, 240, 320, 15);
   lblOri.Caption := 'Imagens do sistema de ORIGEM';
   lblOri.Font.Style := [fsBold];
-  lblOri.Font.Color := COR_TEXTO;
+  lblOri.Font.Color := CorTexto;
 
   lbOrigem := TListBox.Create(Self);
   lbOrigem.Parent := Self;
-  lbOrigem.SetBounds(20, 146, 250, 96);
+  lbOrigem.SetBounds(20, 258, 250, 96);
 
   btAddOri := TButton.Create(Self);
   btAddOri.Parent := Self;
-  btAddOri.SetBounds(278, 146, 74, 26);
+  btAddOri.SetBounds(278, 258, 74, 26);
   btAddOri.Caption := 'Importar...';
   btAddOri.OnClick := ImportarOrigemClick;
 
   btDelOri := TButton.Create(Self);
   btDelOri.Parent := Self;
-  btDelOri.SetBounds(278, 176, 74, 26);
+  btDelOri.SetBounds(278, 288, 74, 26);
   btDelOri.Caption := 'Remover';
   btDelOri.Tag := 1; // origem
   btDelOri.OnClick := RemoverImagemClick;
@@ -249,24 +423,24 @@ begin
   // Imagens de DESTINO
   lblDes := TLabel.Create(Self);
   lblDes.Parent := Self;
-  lblDes.SetBounds(380, 128, 320, 15);
+  lblDes.SetBounds(380, 240, 320, 15);
   lblDes.Caption := 'Imagens do sistema de DESTINO (campos errados)';
   lblDes.Font.Style := [fsBold];
-  lblDes.Font.Color := COR_TEXTO;
+  lblDes.Font.Color := CorTexto;
 
   lbDestino := TListBox.Create(Self);
   lbDestino.Parent := Self;
-  lbDestino.SetBounds(380, 146, 250, 96);
+  lbDestino.SetBounds(380, 258, 250, 96);
 
   btAddDes := TButton.Create(Self);
   btAddDes.Parent := Self;
-  btAddDes.SetBounds(638, 146, 62, 26);
+  btAddDes.SetBounds(638, 258, 62, 26);
   btAddDes.Caption := 'Importar';
   btAddDes.OnClick := ImportarDestinoClick;
 
   btDelDes := TButton.Create(Self);
   btDelDes.Parent := Self;
-  btDelDes.SetBounds(638, 176, 62, 26);
+  btDelDes.SetBounds(638, 288, 62, 26);
   btDelDes.Caption := 'Remover';
   btDelDes.Tag := 2; // destino
   btDelDes.OnClick := RemoverImagemClick;
@@ -274,41 +448,41 @@ begin
   // Descricao livre com placeholder (marca d'agua)
   lblDsc := TLabel.Create(Self);
   lblDsc.Parent := Self;
-  lblDsc.SetBounds(20, 254, 300, 15);
-  lblDsc.Caption := 'Descricao';
+  lblDsc.SetBounds(20, 366, 300, 15);
+  lblDsc.Caption := 'Observacoes';
   lblDsc.Font.Style := [fsBold];
-  lblDsc.Font.Color := COR_TEXTO;
+  lblDsc.Font.Color := CorTexto;
 
   mDescricao := TMemo.Create(Self);
   mDescricao.Parent := Self;
-  mDescricao.SetBounds(20, 272, 680, 190);
+  mDescricao.SetBounds(20, 384, 680, 160);
   mDescricao.ScrollBars := ssVertical;
   mDescricao.WordWrap := True;
   mDescricao.OnEnter := MemoEnter;
   mDescricao.OnExit := MemoExit;
   // Estado inicial: marca d'agua em cinza
   FPlaceholderAtivo := True;
-  mDescricao.Font.Color := COR_HINT;
+  mDescricao.Font.Color := CorHint;
   mDescricao.Text := PLACEHOLDER;
 
   // Rodape
   lblStatus := TLabel.Create(Self);
   lblStatus.Parent := Self;
-  lblStatus.SetBounds(20, 480, 480, 40);
+  lblStatus.SetBounds(20, 592, 480, 40);
   lblStatus.AutoSize := False;
   lblStatus.WordWrap := True;
   lblStatus.Caption := '';
 
   btEnviar := TButton.Create(Self);
   btEnviar.Parent := Self;
-  btEnviar.SetBounds(520, 512, 90, 32);
+  btEnviar.SetBounds(520, 624, 90, 32);
   btEnviar.Caption := 'Enviar';
   btEnviar.Default := True;
   btEnviar.OnClick := EnviarClick;
 
   btCancelar := TButton.Create(Self);
   btCancelar.Parent := Self;
-  btCancelar.SetBounds(616, 512, 84, 32);
+  btCancelar.SetBounds(616, 624, 84, 32);
   btCancelar.Caption := 'Cancelar';
   btCancelar.Cancel := True;
   btCancelar.ModalResult := mrCancel;
@@ -320,7 +494,7 @@ begin
   begin
     FPlaceholderAtivo := False;
     mDescricao.Clear;
-    mDescricao.Font.Color := COR_TEXTO;
+    mDescricao.Font.Color := COR_TEXTO_CLARO;
   end;
 end;
 
@@ -329,7 +503,7 @@ begin
   if Trim(mDescricao.Text) = '' then
   begin
     FPlaceholderAtivo := True;
-    mDescricao.Font.Color := COR_HINT;
+    mDescricao.Font.Color := COR_HINT_CLARO;
     mDescricao.Text := PLACEHOLDER;
   end;
 end;
@@ -389,7 +563,7 @@ procedure TFormReportarProblema.EnviarClick(Sender: TObject);
 var
   i: Integer;
   Origem, Destino: TArray<string>;
-  Descricao: string;
+  Descricao, Email, Revenda, LinkBase: string;
   Thread: TEnvioThread;
 begin
   if cbSistema.ItemIndex < 0 then
@@ -398,6 +572,33 @@ begin
     cbSistema.SetFocus;
     Exit;
   end;
+
+  Email := Trim(edEmail.Text);
+  if Email = '' then
+  begin
+    DefinirStatus('Informe o E-mail.', True);
+    edEmail.SetFocus;
+    Exit;
+  end;
+
+  if not EhEmailValido(Email) then
+  begin
+    DefinirStatus('E-mail inválido. Use o formato: exemplo@dominio.com', True);
+    edEmail.SetFocus;
+    Exit;
+  end;
+
+  Revenda := Trim(edRevenda.Text);
+  if Revenda = '' then
+  begin
+    DefinirStatus('Informe o Nome da Revenda.', True);
+    edRevenda.SetFocus;
+    Exit;
+  end;
+
+  SalvarDadosFormulario(Email, Revenda);
+
+  LinkBase := Trim(edLinkBase.Text);
 
   if FPlaceholderAtivo then
     Descricao := ''
@@ -423,10 +624,10 @@ begin
   btCancelar.Enabled := False;
   Screen.Cursor := crHourGlass;
   DefinirStatus('Enviando e-mail, aguarde...', False);
-  lblStatus.Font.Color := COR_TEXTO;
+  lblStatus.Font.Color := clBlue;
 
   // Envio em thread para nao travar a janela.
-  Thread := TEnvioThread.Create(cbSistema.Text, Descricao, Origem, Destino);
+  Thread := TEnvioThread.Create(cbSistema.Text, Descricao, Email, Revenda, LinkBase, Origem, Destino);
   Thread.OnTerminate := EnvioConcluido;
   Thread.Start;
 end;
@@ -443,14 +644,17 @@ begin
   if Erro = '' then
   begin
     DefinirStatus('Relatorio enviado com sucesso!', False);
-    MessageDlg('Relatorio enviado com sucesso para ' + SMTP_DESTINO + '.',
+    NotificarProblemaEnviado;
+    MessageDlg('Relatorio enviado com sucesso para ' + ObterSMTPDestino + '.',
       mtInformation, [mbOK], 0);
     ModalResult := mrOk;
   end
   else
   begin
     DefinirStatus('Falha ao enviar: ' + Erro, True);
-    MessageDlg('Nao foi possivel enviar o relatorio:'#13#10 + Erro,
+    LogarErro('Falha ao enviar relatório: ' + Erro);
+    MessageDlg('Nao foi possivel enviar o relatorio:'#13#10 + Erro +
+      #13#10#13#10'O relatório será retentado automaticamente.',
       mtError, [mbOK], 0);
   end;
 end;
