@@ -17,6 +17,10 @@ CHANGELOG_PENDENTE.txt
 # Config local do desenvolvedor
 MultiMigrador.dproj.local
 
+# Fontes/backups compactados dos migradores: nao entram no pacote distribuido
+*.rar
+*.7z
+
 # Recursos embutidos gerados por gerar_recursos.bat (derivados, grandes).
 # Regenere com: gerar_recursos.bat  (antes de compilar)
 migradores.zip
