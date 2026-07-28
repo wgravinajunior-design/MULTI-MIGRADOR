@@ -24,7 +24,7 @@ uses
   System.SysUtils, System.Classes;
 
 const
-  APP_VERSAO   = '1.1.2';                    // <-- bump a cada release
+  APP_VERSAO   = '1.1.3';                    // <-- bump a cada release
   GITHUB_OWNER = 'wgravinajunior-design';
   GITHUB_REPO  = 'MULTI-MIGRADOR';
   NOME_EXE     = 'MultiMigrador.exe';

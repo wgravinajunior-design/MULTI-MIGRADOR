@@ -1,0 +1,18 @@
+﻿!!! ATENÇÃO - CUIDADOS E ORIENTAÇÕES IMPORTANTES !!!
+
+1. AMBIENTE DE LABORATÓRIO / HOMOLOGAÇÃO:
+   - Realize SEMPRE a migração em ambiente de laboratório/teste antes de aplicar na base oficial de produção.
+   - NUNCA execute o migrador diretamente em banco de produção com sistema em uso.
+
+2. BACKUP OBRIGATÓRIO DE SEGURANÇA:
+   - Faça backup completo das bases de Origem e Destino antes de qualquer processo.
+
+3. VALIDAÇÃO PRÉVIA E POSTERIOR DOS DADOS:
+   - Confira e valide os dados da base de origem antes de migrar.
+   - Após a migração, confira minuciosamente no UPSYSTEM os dados migrados.
+
+4. CUIDADO COM AS OPÇÕES "APAGAR...":
+   - Os checkboxes "Apagar..." excluem permanentemente os registros já migrados na base de destino. Use com extrema atenção!
+
+5. TERMO DE RESPONSABILIDADE:
+   - Após colocar em produção qualquer migração irá apagar os dados novamente, então confira minuciosamente os dados! A Código Up não se responsabiliza por migrações!
