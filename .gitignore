@@ -16,6 +16,7 @@ CHANGELOG_PENDENTE.txt
 
 # Config local do desenvolvedor
 MultiMigrador.dproj.local
+.claude/
 
 # Fontes/backups compactados dos migradores: nao entram no pacote distribuido
 *.rar

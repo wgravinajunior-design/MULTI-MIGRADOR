@@ -24,7 +24,7 @@ uses
   System.SysUtils, System.Classes;
 
 const
-  APP_VERSAO   = '1.1.3';                    // <-- bump a cada release
+  APP_VERSAO   = '1.1.4';                    // <-- bump a cada release
   GITHUB_OWNER = 'wgravinajunior-design';
   GITHUB_REPO  = 'MULTI-MIGRADOR';
   NOME_EXE     = 'MultiMigrador.exe';
@@ -544,6 +544,58 @@ end;
 
 { ----- Dialogo de confirmacao ----- }
 
+// As notas do release chegam em Markdown e com quebra de linha variavel: o
+// GitHub devolve so #10 quando o texto foi enviado assim. O Memo do Windows so
+// quebra linha em #13#10, entao sem normalizar sai tudo grudado numa linha so.
+// Alem disso tiramos a marcacao (##, **, crases), que num Memo simples apareceria
+// como lixo, e deixamos um item por linha.
+function FormatarNotas(const ANotas: string): string;
+var
+  Origem: TArray<string>;
+  Saida: TStringBuilder;
+  Linha: string;
+  i: Integer;
+  UltimaVazia: Boolean;
+begin
+  Origem := StringReplace(
+              StringReplace(ANotas, #13#10, #10, [rfReplaceAll]),
+              #13, #10, [rfReplaceAll]).Split([#10]);
+
+  Saida := TStringBuilder.Create;
+  try
+    UltimaVazia := True;  // evita comecar o texto com linha em branco
+    for i := 0 to High(Origem) do
+    begin
+      Linha := Trim(Origem[i]);
+
+      // negrito/italico e code span nao existem no Memo: viram texto puro
+      Linha := StringReplace(Linha, '**', '', [rfReplaceAll]);
+      Linha := StringReplace(Linha, '`', '', [rfReplaceAll]);
+
+      // titulo "## Novidades" -> "Novidades"
+      while Linha.StartsWith('#') do
+        Linha := TrimLeft(Linha.Substring(1));
+
+      // item "- texto" / "* texto" -> marcador com recuo, um por linha
+      if Linha.StartsWith('- ') or Linha.StartsWith('* ') then
+        Linha := '  ' + Chr($2022) + ' ' + TrimLeft(Linha.Substring(2));
+
+      if Linha = '' then
+      begin
+        if UltimaVazia then Continue;  // nao acumula linhas em branco seguidas
+        UltimaVazia := True;
+      end
+      else
+        UltimaVazia := False;
+
+      Saida.Append(Linha).Append(sLineBreak);
+    end;
+    Result := TrimRight(Saida.ToString);
+  finally
+    Saida.Free;
+  end;
+end;
+
 function PerguntarAtualizar(const AInfo: TInfoAtualizacao): Boolean;
 var
   F: TForm;
@@ -579,7 +631,8 @@ begin
     M.WordWrap := True;
     M.Color := clWhite;
     if Trim(AInfo.Notas) <> '' then
-      M.Text := 'O que mudou:' + sLineBreak + AInfo.Notas
+      M.Text := 'O que mudou:' + sLineBreak + sLineBreak +
+                FormatarNotas(AInfo.Notas)
     else
       M.Text := '(sem notas de versao)';
 

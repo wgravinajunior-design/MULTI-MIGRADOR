@@ -16,7 +16,7 @@ cd /d "%~dp0"
 echo [1/2] Gerando migradores.zip a partir dos arquivos versionados...
 REM ATENCAO: ao adicionar um migrador novo, inclua a pasta na lista abaixo,
 REM senao ele fica de fora do pacote e nao chega nas maquinas dos clientes.
-git archive --format=zip -o migradores.zip HEAD -- "ARPA SISTEMAS" "CASA MAGALHAES" "CLOSMAQ" "DIGISAT G6" "DMA SISTEMAS" "EMC SOFTWARE" "EXCEL" "FUTURA" "GANSO SISTEMAS" "GDOOR" "HIPER" "HOST" "LC SISTEMAS" "LINK PRO" "PROJECT 7" "QUESTOR" "RENSOFTWARE" "TOTVS CHEF" "VTI" "ZWEB"
+git archive --format=zip -o migradores.zip HEAD -- "ARPA SISTEMAS" "CASA MAGALHAES" "CLOSMAQ" "COMPUFOUR" "DIGISAT G6" "DMA SISTEMAS" "EMC SOFTWARE" "EXCEL" "FUTURA" "GANSO SISTEMAS" "GDOOR" "HIPER" "HOST" "LC SISTEMAS" "LINK PRO" "PROJECT 7" "QUESTOR" "RENSOFTWARE" "TOTVS CHEF" "UNIPLUS" "VTI" "ZWEB"
 if errorlevel 1 goto :erro
 
 echo [2/2] Compilando DllsEmbutidas.res...

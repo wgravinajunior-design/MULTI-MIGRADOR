@@ -37,6 +37,7 @@ type
     procedure CardMouseLeave(Sender: TObject);
     procedure ReportarProblemaClick(Sender: TObject);
     procedure AtualizacaoVerificada(const AInfo: TInfoAtualizacao);
+    procedure PosicionarAvisoVersao;
     procedure FiltroMudou(Sender: TObject);
     procedure AtualizarVisibilidadeCards;
     procedure ConfigurarTema;
@@ -98,16 +99,21 @@ begin
   FEdFiltro.OnKeyDown := KeyDown;
   FEdFiltro.BorderStyle := bsSingle;
 
-  // Label para notificação de nova versão - na barra azul
+  // Aviso de nova versao: fica na linha de cima, logo antes da build. Antes
+  // ficava na mesma linha do botao "Reportar Problema" e, como o TLabel usa
+  // AutoSize, o texto crescia por cima do botao. A posicao exata e calculada
+  // em PosicionarAvisoVersao, quando o texto ja existe.
   FLblNovoVersao := TLabel.Create(Self);
   FLblNovoVersao.Parent := PanelTopo;
-  FLblNovoVersao.SetBounds(PanelTopo.Width - 370, 50, 180, 28);
   FLblNovoVersao.Anchors := [akTop, akRight];
+  FLblNovoVersao.Transparent := True;
+  // taRightJustify: com AutoSize o label cresce para a ESQUERDA, mantendo a
+  // borda direita parada. E o que garante que ele nunca avance sobre o que
+  // estiver a direita, por maior que fique o texto.
+  FLblNovoVersao.Alignment := taRightJustify;
   FLblNovoVersao.Font.Style := [fsBold];
   FLblNovoVersao.Font.Color := $00FFD700;
-  FLblNovoVersao.Font.Size := 10;
-  FLblNovoVersao.Alignment := taLeftJustify;
-  FLblNovoVersao.Layout := tlCenter;
+  FLblNovoVersao.Font.Size := 9;
   FLblNovoVersao.Caption := '';
   FLblNovoVersao.Visible := False;
 
@@ -160,6 +166,21 @@ begin
   VerificarAtualizacoesAsync(AtualizacaoVerificada);
 end;
 
+// Encosta o aviso de nova versao imediatamente antes da build, na mesma linha,
+// com uma folga fixa. Como o texto da build tambem varia de tamanho (a data
+// entra depois), a conta e feita aqui, a partir da posicao real do label.
+procedure TFormPrincipal.PosicionarAvisoVersao;
+const
+  FOLGA = 28;  // espaco entre o aviso e a linha "vX.Y.Z | Build: ..."
+begin
+  if not FLblNovoVersao.Visible then
+    Exit;
+
+  FLblNovoVersao.Top := LabelBuild.Top +
+    (LabelBuild.Height - FLblNovoVersao.Height) div 2;
+  FLblNovoVersao.Left := LabelBuild.Left - FOLGA - FLblNovoVersao.Width;
+end;
+
 procedure TFormPrincipal.AtualizacaoVerificada(const AInfo: TInfoAtualizacao);
 var
   Erro: string;
@@ -177,6 +198,7 @@ begin
 
   FLblNovoVersao.Caption := '🔔 Nova versão ' + AInfo.VersaoRemota + ' disponível!';
   FLblNovoVersao.Visible := True;
+  PosicionarAvisoVersao;
   LogarAcao('Nova versão disponível: ' + AInfo.VersaoRemota);
 
   if not PerguntarAtualizar(AInfo) then
