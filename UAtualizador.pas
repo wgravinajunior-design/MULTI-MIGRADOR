@@ -12,9 +12,14 @@ unit UAtualizador;
 //  4. Ao reabrir na versao nova, o changelog pendente e mostrado uma vez.
 //
 // Publicar uma nova versao (passo manual do desenvolvedor):
-//  - Alterar APP_VERSAO abaixo (ex.: '1.0.1'), recompilar.
+//  - Commitar os migradores novos/alterados e inclui-los na lista do
+//    gerar_recursos.bat (o zip e montado com "git archive HEAD": o que nao
+//    estiver commitado e listado NAO entra no pacote).
+//  - Alterar APP_VERSAO abaixo (ex.: '1.0.1') e o VerInfo no .dproj.
+//  - Rodar gerar_recursos.bat e recompilar.
 //  - Criar um Release no GitHub com tag 'v1.0.1', anexar MultiMigrador.exe e
-//    escrever nas notas o que mudou.
+//    escrever nas notas o que mudou. O exe nao e versionado no repositorio
+//    (ver .gitignore): o Release e a unica forma de distribui-lo.
 //
 // HTTP via THTTPClient (WinHTTP) -> HTTPS nativo, sem depender do OpenSSL.
 

@@ -28,6 +28,16 @@ migradores.zip
 DllsEmbutidas.res
 DllsEmbutidas.RES
 
-# Observacao: os .exe (launcher + migradores) e as DLLs de runtime sao
-# versionados de proposito, pois o Multi Migrador e distribuido como um
-# pacote unico com todos os sistemas juntos.
+# O launcher compilado NAO e versionado: e saida de build (reproduzivel a
+# partir do fonte + os exes dos migradores) e ja passava de 95 MB, perto do
+# limite rigido de 100 MB por arquivo do GitHub -- o proximo migrador faria o
+# push ser recusado. Ele continua sendo distribuido como asset do Release,
+# onde o limite e de 2 GB.
+#
+# Para gerar: gerar_recursos.bat e depois recompilar (F9 ou msbuild).
+/MultiMigrador.exe
+
+# Observacao: os .exe dos migradores e as DLLs de runtime CONTINUAM
+# versionados de proposito -- o gerar_recursos.bat monta o migradores.zip com
+# "git archive HEAD", entao um migrador que nao esteja commitado nao entra no
+# pacote e nao chega nas maquinas.
