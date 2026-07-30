@@ -3,6 +3,9 @@ Win32/
 Win64/
 __history/
 __recovery/
+
+# Logs gerados em execucao
+log/
 *.dcu
 *.identcache
 *.dsk
