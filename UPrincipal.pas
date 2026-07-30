@@ -391,6 +391,17 @@ begin
   end;
 end;
 
+// GetFileAttributes direto: nao levanta excecao se a pasta sumir ou estiver
+// sem permissao entre a listagem e a checagem -- so devolve False.
+function PastaOculta(const ADir: string): Boolean;
+var
+  Attr: DWORD;
+begin
+  Attr := GetFileAttributes(PChar(ADir));
+  Result := (Attr <> INVALID_FILE_ATTRIBUTES) and
+            ((Attr and FILE_ATTRIBUTE_HIDDEN) <> 0);
+end;
+
 procedure TFormPrincipal.CarregarSistemas;
 var
   Dir, Nome, Base: string;
@@ -402,12 +413,17 @@ begin
                  TSearchOption.soTopDirectoryOnly) do
     begin
       Nome := ExtractFileName(Dir);
-      
-      // Ignorar pastas de sistema/build do Delphi e controle de versao
+
+      // Pasta oculta ou comecada por ponto (.git, .vs, .claude, ...) nunca e um
+      // migrador. Regra geral em vez de lista de excecoes: cada ferramenta nova
+      // cria a sua pasta e ela aparecia como card com "Executavel nao encontrado".
+      if Nome.StartsWith('.') or PastaOculta(Dir) then
+        Continue;
+
+      // Saidas de build do Delphi e pasta de log
       if SameText(Nome, 'Win32') or SameText(Nome, 'Win64') or
          SameText(Nome, '__history') or SameText(Nome, '__recovery') or
-         SameText(Nome, '.git') or SameText(Nome, '.svn') or
-         SameText(Nome, '.vs') or SameText(Nome, 'log') then
+         SameText(Nome, 'log') then
         Continue;
 
       // O nome do card será o próprio nome da pasta

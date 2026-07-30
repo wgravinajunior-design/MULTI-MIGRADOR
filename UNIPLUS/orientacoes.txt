@@ -1,0 +1,5 @@
+1. AMBIENTE DE LABORATORIO / HOMOLOGACAO: Realizar sempre em teste antes de producao. NUNCA rodar direto em producao com sistema em uso.
+2. BACKUP OBRIGATORIO DE SEGURANCA: Fazer backup completo das bases antes de migrar.
+3. VALIDACAO PREVIA E POSTERIOR DOS DADOS: Conferir os dados na origem e validar minuciosamente no UPSYSTEM apos a migracao.
+4. CUIDADO COM AS OPCOES "APAGAR...": Os checkboxes excluem dados do destino.
+5. TERMO DE RESPONSABILIDADE: Apos colocar em producao qualquer migracao ira apagar os dados novamente, entao confira minuciosamente os dados! A Codigo Up nao se responsabiliza por migracoes!
