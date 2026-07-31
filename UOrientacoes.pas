@@ -34,6 +34,10 @@ type
 const
   ARQ_ORIENTACOES = 'orientacoes.txt';
 
+  ALTURA_IDEAL = 820;  // cabe o texto todo sem rolar num monitor normal
+  ALTURA_MINIMA = 420; // abaixo disso o texto fica ilegivel; melhor rolar mais
+  MARGEM_TELA  = 56;   // barra de titulo + folga para nao encostar na barra de tarefas
+
   COR_AVISO_FUNDO  = $00D7F0FB;  // amarelo claro do cabecalho
   COR_AVISO_TEXTO  = $00136A93;
   COR_FINAL_FUNDO  = $00DFF3E2;  // verde claro da mensagem final
@@ -128,6 +132,7 @@ var
   BtOk, BtCancelar, BtLink: TButton;
   Texto: string;
   Link: TAbridorLink;
+  Altura: Integer;
 begin
   Texto := LerOrientacoes(APastaSistema);
   if Trim(Texto) = '' then
@@ -139,10 +144,21 @@ begin
   F := TForm.CreateNew(nil);
   try
     F.Caption := 'Orientacoes obrigatorias';
-    F.Position := poMainFormCenter;
+    F.Position := poScreenCenter;   // centrado na tela: em monitor pequeno o
+                                    // centro do form principal pode jogar a
+                                    // janela para fora da area visivel
     F.BorderStyle := bsDialog;
     F.ClientWidth := 620;
-    F.ClientHeight := 820;
+
+    // Em monitor pequeno os 820px nao cabem e os botoes ficariam fora da tela.
+    // Limita a janela a area util (descontando a barra de titulo) e deixa o
+    // texto rolar: o Memo e alClient e ja tem barra de rolagem vertical.
+    Altura := ALTURA_IDEAL;
+    if Altura > Screen.WorkAreaHeight - MARGEM_TELA then
+      Altura := Screen.WorkAreaHeight - MARGEM_TELA;
+    if Altura < ALTURA_MINIMA then
+      Altura := ALTURA_MINIMA;
+    F.ClientHeight := Altura;
     F.Font.Name := 'Segoe UI';
     F.Font.Height := -12;
     F.Color := clWhite;
