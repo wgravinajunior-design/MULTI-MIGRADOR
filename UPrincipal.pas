@@ -204,7 +204,7 @@ begin
   if not PerguntarAtualizar(AInfo) then
     Exit;
 
-  if BaixarEInstalar(AInfo, Erro) then
+  if BaixarComProgresso(AInfo, Erro) then
   begin
     LogarAcao('Atualizado para versão ' + AInfo.VersaoRemota);
     MessageDlg('Atualização baixada. O sistema será reiniciado na nova versão.',

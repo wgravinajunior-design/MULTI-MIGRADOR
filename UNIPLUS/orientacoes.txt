@@ -20,4 +20,17 @@
 REQUISITOS DESTE MIGRADOR:
    - Este migrador le origem em PostgreSQL (a partir de um arquivo .backup) e grava o destino em Firebird.
    - As bibliotecas de conexao (libpq.dll e fbclient.dll) ja acompanham esta pasta.
-   - ATENCAO: a opcao "Restaurar e Conectar Origem PostgreSQL" restaura um arquivo .backup, e para isso exige um servidor PostgreSQL INSTALADO e em execucao, com as ferramentas pg_restore/psql disponiveis. Somente as DLLs nao bastam para restaurar.
+   - ATENCAO: a opcao "Restaurar e Conectar Origem PostgreSQL" restaura um arquivo .backup, e para isso exige um servidor PostgreSQL INSTALADO e em execucao. Somente as DLLs nao bastam para restaurar.
+
+COMO INSTALAR O POSTGRESQL (OBRIGATORIO PARA ESTE MIGRADOR):
+   Download: https://www.postgresql.org/download/windows/
+
+   1. Baixe o instalador do PostgreSQL para Windows (pacote EnterpriseDB) no link acima.
+   2. Durante a instalacao, MANTENHA MARCADO o item "Command Line Tools". Ele instala
+      o pg_restore e o psql, que sao justamente as ferramentas usadas para restaurar
+      o arquivo .backup. Sem eles a restauracao falha.
+   3. Anote a senha definida para o usuario "postgres".
+   4. Mantenha a porta padrao 5432, salvo necessidade contraria.
+   5. Ao final, confirme que o servico "postgresql" esta em execucao (services.msc).
+   6. Na tela do migrador use host 127.0.0.1, porta 5432, usuario postgres e a senha do passo 3.
+   7. Selecione o arquivo .backup da base do cliente e clique em "Restaurar e Conectar Origem PostgreSQL".

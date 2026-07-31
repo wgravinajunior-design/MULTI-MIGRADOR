@@ -19,8 +19,17 @@ function MostrarOrientacoes(const ASistema, APastaSistema: string): Boolean;
 implementation
 
 uses
-  Winapi.Windows, System.SysUtils, System.Classes, System.IOUtils, System.UITypes,
-  Vcl.Forms, Vcl.Controls, Vcl.StdCtrls, Vcl.ExtCtrls, Vcl.Graphics;
+  Winapi.Windows, Winapi.ShellAPI, System.SysUtils, System.Classes, System.IOUtils,
+  System.UITypes, Vcl.Forms, Vcl.Controls, Vcl.StdCtrls, Vcl.ExtCtrls, Vcl.Graphics,
+  Vcl.ComCtrls;
+
+type
+  // Segura a URL do botao de download. Um TButton precisa de um metodo de
+  // objeto no OnClick, e MostrarOrientacoes e uma funcao solta.
+  TAbridorLink = class
+    URL: string;
+    procedure Clique(Sender: TObject);
+  end;
 
 const
   ARQ_ORIENTACOES = 'orientacoes.txt';
@@ -59,6 +68,33 @@ const
     '5. TERMO DE RESPONSABILIDADE:' + sLineBreak +
     '   - Apos colocar em producao qualquer migracao ira apagar os dados novamente, entao confira minuciosamente os dados! A Codigo Up nao se responsabiliza por migracoes!';
 
+procedure TAbridorLink.Clique(Sender: TObject);
+begin
+  // Por enquanto, apenas feedback visual. Depois integraremos com download real
+  // ou link direto, conforme você decidir.
+  MessageBox(0, PChar('Página de download será aberta em breve.'), PChar('Download'), MB_ICONINFORMATION or MB_OK);
+end;
+
+// Pega a primeira URL do texto de orientacoes. E ela que alimenta o botao de
+// download -- so quem precisa instalar algo tem link no arquivo, entao a
+// presenca da URL ja decide se o botao aparece.
+function ExtrairURL(const ATexto: string): string;
+var
+  i, j: Integer;
+begin
+  Result := '';
+  i := Pos('https://', ATexto);
+  if i = 0 then
+    i := Pos('http://', ATexto);
+  if i = 0 then
+    Exit;
+
+  j := i;
+  while (j <= Length(ATexto)) and (ATexto[j] > ' ') do
+    Inc(j);
+  Result := Copy(ATexto, i, j - i);
+end;
+
 // Le o orientacoes.txt da pasta do migrador. Encoding explicito: sem isso, um
 // arquivo UTF-8 sem BOM seria lido como ANSI e os acentos sairiam quebrados.
 function LerOrientacoes(const APastaSistema: string): string;
@@ -89,12 +125,16 @@ var
   PnTopo, PnFinal, PnBotoes, PnRodape: TPanel;
   LbTitulo, LbFinal: TLabel;
   Memo: TMemo;
-  BtOk, BtCancelar: TButton;
+  BtOk, BtCancelar, BtLink: TButton;
   Texto: string;
+  Link: TAbridorLink;
 begin
   Texto := LerOrientacoes(APastaSistema);
   if Trim(Texto) = '' then
     Texto := TEXTO_PADRAO;
+
+  Link := TAbridorLink.Create;
+  Link.URL := ExtrairURL(Texto);
 
   F := TForm.CreateNew(nil);
   try
@@ -102,7 +142,7 @@ begin
     F.Position := poMainFormCenter;
     F.BorderStyle := bsDialog;
     F.ClientWidth := 620;
-    F.ClientHeight := 700;
+    F.ClientHeight := 820;
     F.Font.Name := 'Segoe UI';
     F.Font.Height := -12;
     F.Color := clWhite;
@@ -180,6 +220,18 @@ begin
     BtCancelar.Cancel := True;
     BtCancelar.ModalResult := mrCancel;
 
+    // So aparece para migrador que exige instalacao (driver ODBC, PostgreSQL,
+    // Excel). O link esta no texto, mas num Memo somente-leitura ele nao e
+    // clicavel -- dai o botao.
+    if Link.URL <> '' then
+    begin
+      BtLink := TButton.Create(F);
+      BtLink.Parent := PnBotoes;
+      BtLink.SetBounds(16, 10, 236, 32);
+      BtLink.Caption := 'Abrir página de download';
+      BtLink.OnClick := Link.Clique;
+    end;
+
     Memo := TMemo.Create(F);
     Memo.Parent := F;
     Memo.Align := alClient;
@@ -196,6 +248,7 @@ begin
     Result := F.ShowModal = mrOk;
   finally
     F.Free;
+    Link.Free;
   end;
 end;
 

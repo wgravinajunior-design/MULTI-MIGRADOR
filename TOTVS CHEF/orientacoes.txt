@@ -20,4 +20,20 @@
 REQUISITOS DESTE MIGRADOR:
    - O destino e Firebird e o cliente (fbclient.dll) ja acompanha esta pasta.
    - Este migrador tambem acessa SQL Server. Esse acesso e feito por ODBC e NAO pode ser embutido no pacote.
-   - ATENCAO: e preciso instalar na maquina o "ODBC Driver 17 (ou 18) for SQL Server" ou o SQL Server Native Client, e ter o servidor SQL Server acessivel.
+   - ATENCAO: e preciso instalar o driver ODBC do SQL Server na maquina e ter o servidor acessivel.
+
+COMO INSTALAR O DRIVER DO SQL SERVER (OBRIGATORIO PARA ESTE MIGRADOR):
+   Download: https://learn.microsoft.com/pt-br/sql/connect/odbc/download-odbc-driver-for-sql-server
+
+   1. Baixe o "Microsoft ODBC Driver 18 for SQL Server" no link acima (o 17 tambem serve).
+   2. INSTALE A VERSAO x86 (32 BITS). Este migrador e um programa de 32 bits: se a
+      maquina tiver so o driver x64 instalado, a conexao falha mesmo o driver estando
+      "instalado". Em maquina de 64 bits pode-se ter os dois lado a lado.
+   3. No servidor SQL Server, abra o "SQL Server Configuration Manager" e habilite o
+      protocolo TCP/IP da instancia. Reinicie o servico depois de habilitar.
+   4. Anote a porta em uso (padrao 1433). Se o servidor estiver em outra maquina,
+      libere essa porta no firewall.
+   5. Para testar antes de migrar, abra o administrador ODBC de 32 BITS em
+      C:\Windows\SysWOW64\odbcad32.exe e crie uma fonte de dados de teste.
+      ATENCAO: o "Fontes de Dados ODBC" que aparece no menu Iniciar e o de 64 bits
+      e NAO serve para conferir este migrador.

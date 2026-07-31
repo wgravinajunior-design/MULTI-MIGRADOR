@@ -12,7 +12,8 @@ procedure NotificarProblemaEnviado;
 implementation
 
 uses
-  Winapi.Windows, Winapi.ShellAPI, System.SysUtils, System.IOUtils, Vcl.Forms;
+  Winapi.Windows, Winapi.ShellAPI, System.SysUtils, System.IOUtils, Vcl.Forms,
+  UAtualizador;
 
 procedure ExibirNotificacao(const ATitulo, ACorpo: string; const ADuracao: Integer = 5000);
 begin
@@ -29,9 +30,14 @@ end;
 
 procedure NotificarAtualizacaoDisponivel(const AVersao: string);
 begin
+  // O dialogo seguinte (PerguntarAtualizar) mostra as notas e faz a pergunta,
+  // entao aqui so anunciamos e dizemos o que vem a seguir -- sem prometer
+  // "download", que da a entender que o usuario tem de baixar algo na mao.
   ExibirNotificacao(
-    'Nova versão disponível',
-    'Multi Migrador ' + AVersao + ' está pronto para download'
+    'Atualização disponível',
+    'A versão ' + LimparVersao(AVersao) + ' do Multi Migrador já pode ser instalada.' + sLineBreak +
+    sLineBreak +
+    'Clique em OK para ver o que mudou e atualizar.'
   );
 end;
 

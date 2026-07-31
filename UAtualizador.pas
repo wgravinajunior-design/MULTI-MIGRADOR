@@ -64,7 +64,13 @@ type
 procedure VerificarAtualizacoesAsync(ACallback: TResultadoProc);
 
 // Compara "1.2.3" x "1.2.10". Retorna <0, 0 ou >0. Aceita prefixo 'v'.
+// Tira o 'v' da tag do GitHub ('v1.1.7' -> '1.1.7'), para exibir ao usuario.
+function LimparVersao(const S: string): string;
+
 function CompararVersoes(const A, B: string): Integer;
+
+// Mostra progress bar enquanto baixa e instala. Bloqueia ate terminar.
+function BaixarComProgresso(const AInfo: TInfoAtualizacao; out AErro: string): Boolean;
 
 // Baixa o novo exe e o instala no lugar do atual. Nao reinicia (o chamador faz).
 function BaixarEInstalar(const AInfo: TInfoAtualizacao; out AErro: string): Boolean;
@@ -85,7 +91,7 @@ uses
   System.Net.HttpClient,
   System.Net.URLClient, System.JSON, System.UITypes,
   Vcl.Forms, Vcl.Controls, Vcl.StdCtrls, Vcl.Graphics, Vcl.Dialogs, Vcl.ExtCtrls,
-  System.Win.Registry, ULogger, System.Hash;
+  Vcl.ComCtrls, System.Win.Registry, ULogger, System.Hash;
 
 const
   ARQ_CHANGELOG = 'CHANGELOG_PENDENTE.txt';
@@ -378,6 +384,77 @@ begin
 end;
 
 { ----- Download e instalacao ----- }
+
+// Mostra um dialog com progress bar animada enquanto o download esta em progresso.
+// Executa BaixarEInstalar numa thread para nao travar a UI.
+function BaixarComProgresso(const AInfo: TInfoAtualizacao; out AErro: string): Boolean;
+var
+  Thread: TThread;
+  Dlg: TForm;
+  Pb: TProgressBar;
+  Lb: TLabel;
+  ResultPtr: ^Boolean;
+  ErroPtr: ^string;
+begin
+  Result := False;
+  AErro := '';
+  New(ResultPtr);
+  New(ErroPtr);
+  ResultPtr^ := False;
+  ErroPtr^ := '';
+
+  // Criar dialog com progress bar marquee
+  Dlg := TForm.CreateNew(nil);
+  Dlg.Caption := 'Atualizando...';
+  Dlg.Width := 380;
+  Dlg.Height := 160;
+  Dlg.Position := poMainFormCenter;
+  Dlg.BorderStyle := bsDialog;
+  Dlg.FormStyle := fsStayOnTop;
+  Dlg.Color := clWhite;
+
+  Lb := TLabel.Create(Dlg);
+  Lb.Parent := Dlg;
+  Lb.SetBounds(20, 20, 340, 20);
+  Lb.Caption := 'Baixando a nova versão...';
+  Lb.Font.Size := 10;
+
+  Pb := TProgressBar.Create(Dlg);
+  Pb.Parent := Dlg;
+  Pb.SetBounds(20, 50, 340, 24);
+  Pb.Style := pbstMarquee;
+  Pb.MarqueeInterval := 40;
+
+  Lb := TLabel.Create(Dlg);
+  Lb.Parent := Dlg;
+  Lb.SetBounds(20, 90, 340, 50);
+  Lb.Caption := 'Isso pode levar alguns segundos. Por favor, aguarde...';
+  Lb.Font.Size := 9;
+  Lb.WordWrap := True;
+
+  // Thread que executa o download
+  Thread := TThread.CreateAnonymousThread(
+    procedure
+    begin
+      ResultPtr^ := BaixarEInstalar(AInfo, ErroPtr^);
+      TThread.Synchronize(nil, procedure
+        begin
+          Dlg.Close;
+        end);
+    end);
+
+  Thread.FreeOnTerminate := True;
+  Thread.Start;
+
+  // Mostrar o dialog (bloqueante)
+  Dlg.ShowModal;
+  Dlg.Free;
+
+  Result := ResultPtr^;
+  AErro := ErroPtr^;
+  Dispose(ResultPtr);
+  Dispose(ErroPtr);
+end;
 
 function BaixarEInstalar(const AInfo: TInfoAtualizacao; out AErro: string): Boolean;
 var

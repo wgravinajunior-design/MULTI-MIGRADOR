@@ -20,4 +20,16 @@
 REQUISITOS DESTE MIGRADOR:
    - Este migrador le origem em PostgreSQL e grava o destino em Firebird.
    - As bibliotecas de conexao (libpq.dll e fbclient.dll) ja acompanham esta pasta. Nao e preciso instalar cliente de banco.
-   - E necessario um servidor PostgreSQL acessivel (na propria maquina ou na rede) com a base de origem ja disponivel, alem de host, porta, usuario e senha.
+   - E necessario um servidor PostgreSQL acessivel (na propria maquina ou na rede) com a base de origem ja disponivel.
+
+SE PRECISAR INSTALAR O POSTGRESQL:
+   Download: https://www.postgresql.org/download/windows/
+
+   Se a base ja estiver em um servidor PostgreSQL acessivel, NAO e preciso
+   instalar nada: basta informar host, porta, usuario e senha na tela.
+   Para montar um servidor local:
+   1. Baixe o instalador do PostgreSQL para Windows (pacote EnterpriseDB) no link acima.
+   2. Execute o instalador e anote a senha definida para o usuario "postgres".
+   3. Mantenha a porta padrao 5432, salvo necessidade contraria.
+   4. Ao final, confirme que o servico "postgresql" esta em execucao (services.msc).
+   5. Na tela do migrador use host 127.0.0.1, porta 5432, usuario postgres e a senha do passo 2.

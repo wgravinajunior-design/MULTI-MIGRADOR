@@ -20,4 +20,14 @@
 REQUISITOS DESTE MIGRADOR:
    - Este importador le planilhas (.xls / .xlsx) e grava o destino em Firebird.
    - O cliente Firebird (fbclient.dll) ja acompanha esta pasta.
-   - ATENCAO: a planilha e aberta pelo Microsoft Excel instalado na maquina. Sem o Excel instalado, a leitura do arquivo falha.
+   - ATENCAO: a planilha e aberta pelo Microsoft Excel instalado na maquina (automacao COM). Sem o Excel instalado, a leitura do arquivo falha.
+
+COMO OBTER O MICROSOFT EXCEL (OBRIGATORIO PARA ESTE MIGRADOR):
+   Download: https://www.microsoft.com/pt-br/microsoft-365/excel
+
+   1. Instale o Microsoft Excel (Office ou Microsoft 365) na maquina que vai importar.
+   2. Abra o Excel UMA VEZ manualmente e aceite os termos de uso. Enquanto essa tela
+      nao for aceita, a automacao nao consegue abrir a planilha.
+   3. LibreOffice, Google Sheets e visualizadores NAO servem: o importador conversa
+      com o Excel em si, nao apenas le o arquivo.
+   4. Se a planilha veio de outro formato, salve-a como .xlsx antes de importar.
