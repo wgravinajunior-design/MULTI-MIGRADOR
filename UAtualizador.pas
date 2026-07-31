@@ -29,7 +29,7 @@ uses
   System.SysUtils, System.Classes;
 
 const
-  APP_VERSAO   = '1.1.7';                    // <-- bump a cada release
+  APP_VERSAO   = '1.1.8';                    // <-- bump a cada release
   GITHUB_OWNER = 'wgravinajunior-design';
   GITHUB_REPO  = 'MULTI-MIGRADOR';
   NOME_EXE     = 'MultiMigrador.exe';
@@ -176,6 +176,26 @@ begin
       Reg.WriteString('UrlDownload', AInfo.UrlDownload);
       Reg.WriteString('Notas', AInfo.Notas);
       Reg.WriteBool('TemAtualizacao', AInfo.TemAtualizacao);
+    end;
+  finally
+    Reg.Free;
+  end;
+end;
+
+// Apaga o cache de verificacao. Obrigatorio depois de atualizar: o cache guarda
+// TemAtualizacao por CACHE_HOURS e, sem limpar, a versao recem-instalada leria
+// esse "tem atualizacao" antigo e pediria para atualizar de novo, em loop.
+procedure LimparCacheVersao;
+var
+  Reg: TRegistry;
+begin
+  Reg := TRegistry.Create;
+  try
+    Reg.RootKey := HKEY_CURRENT_USER;
+    try
+      Reg.DeleteKey('Software\MultiMigrador\Cache');
+    except
+      // cache inexistente ou sem permissao: nao e motivo para falhar a atualizacao
     end;
   finally
     Reg.Free;
@@ -385,75 +405,150 @@ end;
 
 { ----- Download e instalacao ----- }
 
-// Mostra um dialog com progress bar animada enquanto o download esta em progresso.
-// Executa BaixarEInstalar numa thread para nao travar a UI.
+// Janela mostrada durante o download. A barra e desenhada com dois paineis (um
+// trilho e um bloco que corre dentro dele) em vez do TProgressBar em modo
+// marquee: o marquee do Windows depende do tema da maquina e, sem tema, fica
+// uma caixa cinza parada -- exatamente o que dava a impressao de travado.
+type
+  TJanelaProgresso = class
+  private
+    FForm: TForm;
+    FTrilho, FBloco: TPanel;
+    FTimer: TTimer;
+    FPos: Integer;
+    FOk: Boolean;
+    FErro: string;
+    procedure Animar(Sender: TObject);
+    procedure Concluiu(Sender: TObject);
+    procedure Montar(const AVersao: string);
+  public
+    function Executar(const AInfo: TInfoAtualizacao; out AErro: string): Boolean;
+  end;
+
+const
+  LARGURA_BLOCO = 130;
+  PASSO_BLOCO   = 7;
+
+  COR_TRILHO = $00E6E6E6;  // cinza claro do fundo da barra
+  COR_BLOCO  = $00D47800;  // azul (BGR) do bloco que corre
+  COR_TITULO = $003F3F3F;
+
+procedure TJanelaProgresso.Animar(Sender: TObject);
+begin
+  Inc(FPos, PASSO_BLOCO);
+  if FPos > FTrilho.ClientWidth then
+    FPos := -LARGURA_BLOCO;
+  FBloco.Left := FPos;
+end;
+
+// Chamado na thread principal quando o download termina (OnTerminate roda
+// sincronizado), entao pode mexer na janela com seguranca.
+procedure TJanelaProgresso.Concluiu(Sender: TObject);
+begin
+  FTimer.Enabled := False;
+  FForm.ModalResult := mrOk;
+end;
+
+procedure TJanelaProgresso.Montar(const AVersao: string);
+var
+  Lb: TLabel;
+begin
+  FForm := TForm.CreateNew(nil);
+  FForm.Caption := 'Atualizando o Multi Migrador';
+  FForm.Position := poScreenCenter;
+  FForm.BorderStyle := bsDialog;
+  FForm.BorderIcons := [];   // sem X: fechar no meio do download deixaria o exe pela metade
+  FForm.ClientWidth := 480;
+  FForm.ClientHeight := 190;
+  FForm.Color := clWhite;
+  FForm.Font.Name := 'Segoe UI';
+  FForm.Font.Height := -12;
+
+  Lb := TLabel.Create(FForm);
+  Lb.Parent := FForm;
+  Lb.SetBounds(32, 30, 420, 24);
+  Lb.AutoSize := False;
+  Lb.Font.Size := 12;
+  Lb.Font.Color := COR_TITULO;
+  Lb.Caption := 'Baixando a versão ' + AVersao;
+
+  Lb := TLabel.Create(FForm);
+  Lb.Parent := FForm;
+  Lb.SetBounds(32, 60, 420, 20);
+  Lb.AutoSize := False;
+  Lb.Font.Color := clGrayText;
+  Lb.Caption := 'Não feche o programa.';
+
+  FTrilho := TPanel.Create(FForm);
+  FTrilho.Parent := FForm;
+  FTrilho.SetBounds(32, 100, 416, 8);
+  FTrilho.BevelOuter := bvNone;
+  FTrilho.ParentBackground := False;
+  FTrilho.Color := COR_TRILHO;
+
+  FBloco := TPanel.Create(FForm);
+  FBloco.Parent := FTrilho;
+  FBloco.SetBounds(-LARGURA_BLOCO, 0, LARGURA_BLOCO, 8);
+  FBloco.BevelOuter := bvNone;
+  FBloco.ParentBackground := False;
+  FBloco.Color := COR_BLOCO;
+
+  Lb := TLabel.Create(FForm);
+  Lb.Parent := FForm;
+  Lb.SetBounds(32, 130, 416, 40);
+  Lb.AutoSize := False;
+  Lb.WordWrap := True;
+  Lb.Font.Color := clGrayText;
+  Lb.Caption := 'O download leva alguns segundos. Quando terminar, o programa ' +
+                'reinicia sozinho na versão nova.';
+end;
+
+function TJanelaProgresso.Executar(const AInfo: TInfoAtualizacao;
+  out AErro: string): Boolean;
+var
+  Info: TInfoAtualizacao;
+  Thread: TThread;
+begin
+  Info := AInfo;          // copia local: e ela que a thread captura
+  FOk := False;
+  FErro := '';
+  FPos := -LARGURA_BLOCO;
+
+  Montar(LimparVersao(AInfo.VersaoRemota));
+  try
+    FTimer := TTimer.Create(FForm);
+    FTimer.Interval := 15;
+    FTimer.OnTimer := Animar;
+    FTimer.Enabled := True;
+
+    Thread := TThread.CreateAnonymousThread(
+      procedure
+      begin
+        FOk := BaixarEInstalar(Info, FErro);
+      end);
+    Thread.FreeOnTerminate := True;
+    Thread.OnTerminate := Concluiu;
+    Thread.Start;
+
+    FForm.ShowModal;   // so sai quando Concluiu fechar
+  finally
+    FForm.Free;
+  end;
+
+  AErro := FErro;
+  Result := FOk;
+end;
+
 function BaixarComProgresso(const AInfo: TInfoAtualizacao; out AErro: string): Boolean;
 var
-  Thread: TThread;
-  Dlg: TForm;
-  Pb: TProgressBar;
-  Lb: TLabel;
-  ResultPtr: ^Boolean;
-  ErroPtr: ^string;
+  Janela: TJanelaProgresso;
 begin
-  Result := False;
-  AErro := '';
-  New(ResultPtr);
-  New(ErroPtr);
-  ResultPtr^ := False;
-  ErroPtr^ := '';
-
-  // Criar dialog com progress bar marquee
-  Dlg := TForm.CreateNew(nil);
-  Dlg.Caption := 'Atualizando...';
-  Dlg.Width := 380;
-  Dlg.Height := 160;
-  Dlg.Position := poMainFormCenter;
-  Dlg.BorderStyle := bsDialog;
-  Dlg.FormStyle := fsStayOnTop;
-  Dlg.Color := clWhite;
-
-  Lb := TLabel.Create(Dlg);
-  Lb.Parent := Dlg;
-  Lb.SetBounds(20, 20, 340, 20);
-  Lb.Caption := 'Baixando a nova versão...';
-  Lb.Font.Size := 10;
-
-  Pb := TProgressBar.Create(Dlg);
-  Pb.Parent := Dlg;
-  Pb.SetBounds(20, 50, 340, 24);
-  Pb.Style := pbstMarquee;
-  Pb.MarqueeInterval := 40;
-
-  Lb := TLabel.Create(Dlg);
-  Lb.Parent := Dlg;
-  Lb.SetBounds(20, 90, 340, 50);
-  Lb.Caption := 'Isso pode levar alguns segundos. Por favor, aguarde...';
-  Lb.Font.Size := 9;
-  Lb.WordWrap := True;
-
-  // Thread que executa o download
-  Thread := TThread.CreateAnonymousThread(
-    procedure
-    begin
-      ResultPtr^ := BaixarEInstalar(AInfo, ErroPtr^);
-      TThread.Synchronize(nil, procedure
-        begin
-          Dlg.Close;
-        end);
-    end);
-
-  Thread.FreeOnTerminate := True;
-  Thread.Start;
-
-  // Mostrar o dialog (bloqueante)
-  Dlg.ShowModal;
-  Dlg.Free;
-
-  Result := ResultPtr^;
-  AErro := ErroPtr^;
-  Dispose(ResultPtr);
-  Dispose(ErroPtr);
+  Janela := TJanelaProgresso.Create;
+  try
+    Result := Janela.Executar(AInfo, AErro);
+  finally
+    Janela.Free;
+  end;
 end;
 
 function BaixarEInstalar(const AInfo: TInfoAtualizacao; out AErro: string): Boolean;
@@ -537,6 +632,7 @@ begin
       TFile.Delete(ExeOld);
     RenameFile(ExeAtual, ExeOld);           // libera o nome
     RenameFile(ExeNovo, ExeAtual);          // novo assume o nome oficial
+    LimparCacheVersao;                      // senao a versao nova repergunta
   except
     on E: Exception do
     begin
