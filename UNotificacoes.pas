@@ -1,4 +1,4 @@
-unit UNotificacoes;
+﻿unit UNotificacoes;
 
 // Notificações do Windows Toast (notification center).
 // Requer Windows 10+.

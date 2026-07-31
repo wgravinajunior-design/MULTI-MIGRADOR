@@ -1,4 +1,4 @@
-unit UAtualizador;
+﻿unit UAtualizador;
 
 // Auto-atualizacao via GitHub Releases.
 //
@@ -29,7 +29,7 @@ uses
   System.SysUtils, System.Classes;
 
 const
-  APP_VERSAO   = '1.1.6';                    // <-- bump a cada release
+  APP_VERSAO   = '1.1.7';                    // <-- bump a cada release
   GITHUB_OWNER = 'wgravinajunior-design';
   GITHUB_REPO  = 'MULTI-MIGRADOR';
   NOME_EXE     = 'MultiMigrador.exe';

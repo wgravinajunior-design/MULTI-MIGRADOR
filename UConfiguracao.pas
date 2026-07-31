@@ -1,4 +1,4 @@
-unit UConfiguracao;
+﻿unit UConfiguracao;
 
 // Carregamento seguro de configurações (SMTP, etc).
 // Tenta carregar de variáveis de ambiente primeiro, depois de arquivo de configuração.

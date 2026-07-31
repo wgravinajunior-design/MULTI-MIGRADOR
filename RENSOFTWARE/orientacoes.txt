@@ -18,6 +18,6 @@
    - Apos colocar em producao qualquer migracao ira apagar os dados novamente, entao confira minuciosamente os dados! A Codigo Up nao se responsabiliza por migracoes!
 
 REQUISITOS DESTE MIGRADOR:
-   - Este migrador le origem em PostgreSQL (a partir de um arquivo .backup) e grava o destino em Firebird.
-   - As bibliotecas de conexao (libpq.dll e fbclient.dll) ja acompanham esta pasta.
-   - ATENCAO: a opcao "Restaurar e Conectar Origem PostgreSQL" restaura um arquivo .backup, e para isso exige um servidor PostgreSQL INSTALADO e em execucao, com as ferramentas pg_restore/psql disponiveis. Somente as DLLs nao bastam para restaurar.
+   - O destino e Firebird e o cliente (fbclient.dll) ja acompanha esta pasta.
+   - Este migrador tambem acessa SQL Server. Esse acesso e feito por ODBC e NAO pode ser embutido no pacote.
+   - ATENCAO: e preciso instalar na maquina o "ODBC Driver 17 (ou 18) for SQL Server" ou o SQL Server Native Client, e ter o servidor SQL Server acessivel.

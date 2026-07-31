@@ -1,4 +1,4 @@
-unit UReportarProblema;
+﻿unit UReportarProblema;
 
 // Janela "Reportar Problema" do Multi Migrador.
 // Monta a UI em codigo (o restante do projeto tambem cria controles em runtime),
@@ -155,6 +155,7 @@ type
     FErro: string;
     FTentativa: Integer;
     procedure EnviarComRetry;
+    procedure DefinirCharsetCabecalho(var VHeaderEncoding: Char; var VCharSet: string);
   protected
     procedure Execute; override;
   public
@@ -164,6 +165,16 @@ type
   end;
 
 { TEnvioThread }
+
+// O Indy decide sozinho o charset do cabecalho a partir do locale da maquina,
+// e escolhe ISO-8859-1. Como o corpo e o assunto sao UTF-8, forcamos utf-8 com
+// codificacao Base64 (o 'B' do RFC 2047).
+procedure TEnvioThread.DefinirCharsetCabecalho(var VHeaderEncoding: Char;
+  var VCharSet: string);
+begin
+  VHeaderEncoding := 'B';
+  VCharSet := 'utf-8';
+end;
 
 constructor TEnvioThread.Create(const ASistema, ADescricao, AEmail, ARevenda, ALinkBase: string;
   const AOrigem, ADestino: TArray<string>);
@@ -208,6 +219,13 @@ begin
     Msg.From.Address := ObterSMTPUsuario;
     Msg.From.Name := SMTP_REMETENTE;
     Msg.Recipients.EMailAddresses := ObterSMTPDestino;
+
+    // Assunto com acento: cabecalho de e-mail so aceita ASCII, entao precisa ir
+    // codificado (RFC 2047). Sem isto o cliente le os bytes como Latin-1 e o
+    // assunto chega como "CorreÃ§Ã£o". O Indy so expoe isso pelo evento abaixo.
+    Msg.CharSet := 'utf-8';
+    Msg.Encoding := meMIME;
+    Msg.OnInitializeISO := DefinirCharsetCabecalho;
     Msg.Subject := 'Correção Migrador (' + FSistema + ')';
 
     Corpo := TIdText.Create(Msg.MessageParts, nil);

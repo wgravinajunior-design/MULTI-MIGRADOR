@@ -62,9 +62,9 @@
         <VerInfo_Locale>1046</VerInfo_Locale>
         <VerInfo_MajorVer>1</VerInfo_MajorVer>
         <VerInfo_MinorVer>1</VerInfo_MinorVer>
-        <VerInfo_Release>6</VerInfo_Release>
+        <VerInfo_Release>7</VerInfo_Release>
         <VerInfo_Build>0</VerInfo_Build>
-        <VerInfo_Keys>CompanyName=;FileDescription=Multi Migrador;FileVersion=1.1.6.0;InternalName=MultiMigrador;LegalCopyright=;LegalTrademarks=;OriginalFilename=MultiMigrador.exe;ProductName=Multi Migrador;ProductVersion=1.1.6.0;Comments=</VerInfo_Keys>
+        <VerInfo_Keys>CompanyName=;FileDescription=Multi Migrador;FileVersion=1.1.7.0;InternalName=MultiMigrador;LegalCopyright=;LegalTrademarks=;OriginalFilename=MultiMigrador.exe;ProductName=Multi Migrador;ProductVersion=1.1.7.0;Comments=</VerInfo_Keys>
         <UsingDelphiRTL>true</UsingDelphiRTL>
         <Icon_MainIcon>$(BDS)\bin\delphi_PROJECTICON.ico</Icon_MainIcon>
         <UWP_DelphiLogo44>$(BDS)\bin\Artwork\Windows\UWP\delphi_UwpDefault_44.png</UWP_DelphiLogo44>

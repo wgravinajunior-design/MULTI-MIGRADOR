@@ -6,7 +6,8 @@ uses
   UReportarProblema in 'UReportarProblema.pas',
   UAtualizador in 'UAtualizador.pas',
   UEmbutidos in 'UEmbutidos.pas',
-  UMigradores in 'UMigradores.pas';
+  UMigradores in 'UMigradores.pas',
+  UOrientacoes in 'UOrientacoes.pas';
 
 {$R *.res}
 {$R DllsEmbutidas.res}

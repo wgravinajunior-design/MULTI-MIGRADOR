@@ -1,4 +1,4 @@
-unit ULogger;
+﻿unit ULogger;
 
 // Sistema de log local para rastrear ações do Multi Migrador.
 // Logs são salvos em arquivo de texto na pasta do AppData (oculta ao usuário).
