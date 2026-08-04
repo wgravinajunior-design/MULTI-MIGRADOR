@@ -7,7 +7,7 @@ uses
   System.UITypes, System.Generics.Collections, Vcl.Graphics, Vcl.Controls, Vcl.Forms, Vcl.Dialogs,
   Vcl.ExtCtrls, Vcl.StdCtrls, Vcl.Imaging.pngimage, Vcl.Imaging.jpeg,
   UReportarProblema, UAtualizador, UMigradores, ULogger, UNotificacoes,
-  UOrientacoes, System.Win.Registry, UCrash;
+  System.Win.Registry, UCrash;
 
 type
   TFormPrincipal = class(TForm)
@@ -620,15 +620,8 @@ begin
     Exit;
   end;
 
-  // Orientacoes obrigatorias antes de abrir: cada migrador tem requisitos
-  // proprios (servidor PostgreSQL, driver ODBC do SQL Server, Excel...) e os
-  // cuidados de backup/homologacao valem para todos.
-  if not MostrarOrientacoes(FSistemas[Card.Tag], ExtractFilePath(Exe)) then
-  begin
-    LogarAcao('Cancelou nas orientacoes: ' + FSistemas[Card.Tag]);
-    Exit;
-  end;
-
+  // As orientacoes deixaram de ser exibidas aqui: cada migrador passou a
+  // apresentar as suas proprias, com os requisitos especificos do sistema.
   LogarAcao('Abriu: ' + ExtractFileName(Exe));
   if ShellExecute(Handle, 'open', PChar(Exe), nil,
        PChar(ExtractFilePath(Exe)), SW_SHOWNORMAL) <= 32 then

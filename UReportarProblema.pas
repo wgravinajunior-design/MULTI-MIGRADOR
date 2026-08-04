@@ -405,7 +405,7 @@ begin
   lblLinkBase := TLabel.Create(Self);
   lblLinkBase.Parent := Self;
   lblLinkBase.SetBounds(20, 180, 680, 15);
-  lblLinkBase.Caption := 'Link da Base de Migracao (OneDrive / Google Drive)';
+  lblLinkBase.Caption := 'Link / caminho da Base de Migracao (OneDrive / Google Drive) *';
   lblLinkBase.Font.Style := [fsBold];
   lblLinkBase.Font.Color := CorTexto;
 
@@ -417,7 +417,7 @@ begin
   lblOri := TLabel.Create(Self);
   lblOri.Parent := Self;
   lblOri.SetBounds(20, 240, 320, 15);
-  lblOri.Caption := 'Imagens do sistema de ORIGEM';
+  lblOri.Caption := 'Imagens do sistema de ORIGEM *';
   lblOri.Font.Style := [fsBold];
   lblOri.Font.Color := CorTexto;
 
@@ -442,7 +442,7 @@ begin
   lblDes := TLabel.Create(Self);
   lblDes.Parent := Self;
   lblDes.SetBounds(380, 240, 320, 15);
-  lblDes.Caption := 'Imagens do sistema de DESTINO (campos errados)';
+  lblDes.Caption := 'Imagens do sistema de DESTINO (campos errados) *';
   lblDes.Font.Style := [fsBold];
   lblDes.Font.Color := CorTexto;
 
@@ -467,7 +467,7 @@ begin
   lblDsc := TLabel.Create(Self);
   lblDsc.Parent := Self;
   lblDsc.SetBounds(20, 366, 300, 15);
-  lblDsc.Caption := 'Observacoes';
+  lblDsc.Caption := 'Observacoes *';
   lblDsc.Font.Style := [fsBold];
   lblDsc.Font.Color := CorTexto;
 
@@ -616,7 +616,29 @@ begin
 
   SalvarDadosFormulario(Email, Revenda);
 
+  // Todos os campos sao obrigatorios: sem o caminho da base e sem os prints dos
+  // dois lados nao da para reproduzir o problema, e o chamado volta pedindo isso.
   LinkBase := Trim(edLinkBase.Text);
+  if LinkBase = '' then
+  begin
+    DefinirStatus('Informe o link ou caminho da Base de Migracao.', True);
+    edLinkBase.SetFocus;
+    Exit;
+  end;
+
+  if lbOrigem.Items.Count = 0 then
+  begin
+    DefinirStatus('Importe ao menos uma imagem do sistema de ORIGEM.', True);
+    lbOrigem.SetFocus;
+    Exit;
+  end;
+
+  if lbDestino.Items.Count = 0 then
+  begin
+    DefinirStatus('Importe ao menos uma imagem do sistema de DESTINO.', True);
+    lbDestino.SetFocus;
+    Exit;
+  end;
 
   if FPlaceholderAtivo then
     Descricao := ''
