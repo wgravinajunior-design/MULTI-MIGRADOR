@@ -632,17 +632,26 @@ begin
       TFile.Delete(ExeOld);
     RenameFile(ExeAtual, ExeOld);           // libera o nome
     RenameFile(ExeNovo, ExeAtual);          // novo assume o nome oficial
-    LimparCacheVersao;                      // senao a versao nova repergunta
   except
     on E: Exception do
     begin
       AErro := 'Nao foi possivel substituir o executavel: ' + E.Message;
+      LogarErro(AErro);
       // tenta reverter
-      if (not TFile.Exists(ExeAtual)) and TFile.Exists(ExeOld) then
-        RenameFile(ExeOld, ExeAtual);
+      try
+        if (not TFile.Exists(ExeAtual)) and TFile.Exists(ExeOld) then
+          RenameFile(ExeOld, ExeAtual);
+      except end;
       Exit;
     end;
   end;
+
+  // Limpa o cache de atualizacao SEMPRE que conseguir fazer o swap,
+  // mesmo que o changelog falhe depois. Se falhar antes (ex: download,
+  // validacao SHA256), o cache fica intacto e o user pode tentar de novo.
+  try
+    LimparCacheVersao;
+  except end;
 
   // 3) Grava o changelog para exibir no proximo start.
   try
