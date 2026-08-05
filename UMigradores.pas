@@ -80,11 +80,13 @@ var
   Dir, NomeArq, Destino: string;
   Bytes: TBytes;
   i: Integer;
+  Projeto: Boolean;
 begin
   if FindResource(HInstance, 'MIGRADORES', RT_RCDATA) = 0 then
     Exit;
 
   Dir := PastaSistemas;
+  Projeto := EhAmbienteDeProjeto;
 
   // Ja extraido nesta versao? Nao faz nada.
   if VersaoExtraida(Dir) = APP_VERSAO then
@@ -113,6 +115,16 @@ begin
         // cliente (ex.: dados de conexao) nao e sobrescrito na atualizacao.
         // Na 1a instalacao ele nao existe, entao e extraido como padrao.
         if SameText(ExtractFileExt(Destino), '.ini') and TFile.Exists(Destino) then
+          Continue;
+
+        // Na pasta do projeto, as pastas versionadas SAO a fonte da verdade: e
+        // delas que o gerar_recursos.bat monta o pacote. Sobrescrever aqui
+        // desfazia o trabalho do desenvolvedor -- trocava-se o exe de um
+        // migrador, abria-se o launcher e o exe antigo (o que estava no zip
+        // embutido, possivelmente desatualizado) voltava por cima. Nesse modo
+        // so completamos o que falta; distribuido continua sobrescrevendo tudo,
+        // que e o comportamento necessario para a atualizacao chegar ao cliente.
+        if Projeto and TFile.Exists(Destino) then
           Continue;
 
         try
