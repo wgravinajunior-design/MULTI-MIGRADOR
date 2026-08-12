@@ -1,34 +1,28 @@
 # Análise de Melhorias Adicionais - Multi Migrador
 
+> **v2** — revisado em 2026-08-12: status de cada item conferido contra o
+> código atual (3 das 5 de ALTA prioridade já foram implementadas desde a
+> versão anterior deste documento, mas não estavam marcadas). Adicionada a
+> seção [Processo Padrão](#-processo-padrão-de-release-e-novo-migrador), que
+> documenta o fluxo que já vem sendo seguido nos commits (bump de versão,
+> `gerar_recursos.bat`, estrutura de pasta de migrador) para ele parar de
+> viver só na cabeça de quem commitou e virar checklist.
+
 ## 🔍 Melhorias Identificadas (Além das 11 Já Implementadas)
 
 ---
 
 ## **ALTA PRIORIDADE** 🔴
 
-### **1. Sistema de Cache de Versão**
-**Arquivo**: `UAtualizador.pas`
-**Problema**: A cada inicialização, faz requisição ao GitHub mesmo que tenha verificado há poucos minutos
-**Impacto**: Lentidão em redes lentas, requisições desnecessárias
-**Solução Proposta**:
-```
-- Guardar timestamp da última verificação em Registry
-- Verificar novamente apenas se passou > 24 horas
-- Economiza requisições HTTP e tempo de inicialização
-```
+### ✅ **1. Sistema de Cache de Versão** — IMPLEMENTADO
+**Arquivo**: `UAtualizador.pas` (bloco de `TRegistry`, comentário "cache ainda válido (< 24 horas)")
+**Status**: timestamp da última checagem é gravado no Registry e a consulta ao GitHub só é refeita depois de 24h.
 
 ---
 
-### **2. Validação de Integridade do Download**
-**Arquivo**: `UAtualizador.pas` - função `BaixarEInstalar`
-**Problema**: Não valida checksum/hash do arquivo baixado
-**Impacto**: Possível execução de arquivo corrompido
-**Solução Proposta**:
-```
-- Calcular SHA256 do exe baixado
-- Comparar com valor no release do GitHub
-- Previne execução de arquivo corrompido
-```
+### ✅ **2. Validação de Integridade do Download** — IMPLEMENTADO
+**Arquivo**: `UAtualizador.pas` - `CalcularSHA256Arquivo` + validação em `BaixarEInstalar`
+**Status**: o SHA256 do exe baixado é conferido contra o valor informado no release; falha de hash aborta a instalação sem tocar no exe atual.
 
 ---
 
@@ -45,17 +39,9 @@
 
 ---
 
-### **4. Sistema de Relatório de Crash**
-**Arquivo**: Criar `UCrash.pas`
-**Problema**: Se o app falhar, usuário não sabe o que aconteceu
-**Impacto**: Impossível debugar problemas em produção
-**Solução Proposta**:
-```
-- Implementar exception handler global
-- Capturar stack trace
-- Enviar log de crash junto com "Reportar Problema"
-- Ou salvar em arquivo de crash
-```
+### ✅ **4. Sistema de Relatório de Crash** — IMPLEMENTADO
+**Arquivo**: `UCrash.pas`
+**Status**: `Application.OnException` captura exceções não tratadas, salva log em `%TEMP%\MultiMigrador_Crash_*.log` e orienta o usuário a usar "Reportar Problema".
 
 ---
 
@@ -336,13 +322,13 @@
 
 ## 📊 Tabela de Priorização
 
-| # | Melhoria | Prioridade | Esforço | Impacto | Score |
-|---|----------|-----------|--------|--------|-------|
-| 1 | Cache de Versão | ALTA | Baixo | Alto | 9/10 |
-| 2 | Validação de Download | ALTA | Médio | Alto | 8/10 |
-| 3 | Múltiplas Instâncias | ALTA | Médio | Médio | 7/10 |
-| 4 | Sistema de Crash | ALTA | Alto | Alto | 8/10 |
-| 5 | Espaço em Disco | ALTA | Baixo | Médio | 7/10 |
+| # | Melhoria | Prioridade | Esforço | Impacto | Score | Status |
+|---|----------|-----------|--------|--------|-------|--------|
+| 1 | Cache de Versão | ALTA | Baixo | Alto | 9/10 | ✅ Feito |
+| 2 | Validação de Download | ALTA | Médio | Alto | 8/10 | ✅ Feito |
+| 3 | Múltiplas Instâncias | ALTA | Médio | Médio | 7/10 | Pendente |
+| 4 | Sistema de Crash | ALTA | Alto | Alto | 8/10 | ✅ Feito |
+| 5 | Espaço em Disco | ALTA | Baixo | Médio | 7/10 | Pendente |
 | 6 | Limpeza de Logs | MÉDIA | Baixo | Médio | 6/10 |
 | 7 | Compressão de Logs | MÉDIA | Médio | Baixo | 5/10 |
 | 8 | Ícone Notifications | MÉDIA | Baixo | Baixo | 4/10 |
@@ -368,11 +354,11 @@
 ## 🎯 Recomendações de Implementação
 
 ### **Fase 1 (Próximas Sprints)** - ALTA Prioridade
-1. ✅ Cache de Versão (rápido, grande impacto)
-2. ✅ Validação de Download (segurança crítica)
-3. ✅ Sistema de Crash (fundamental para suporte)
-4. ✅ Espaço em Disco (previne falhas)
-5. ✅ Múltiplas Instâncias (UX)
+1. ✅ Cache de Versão — feito (rápido, grande impacto)
+2. ✅ Validação de Download — feito (segurança crítica)
+3. ✅ Sistema de Crash — feito (fundamental para suporte)
+4. ⬜ Espaço em Disco (previne falhas)
+5. ⬜ Múltiplas Instâncias (UX)
 
 ### **Fase 2 (Sprint Seguinte)** - MÉDIA Prioridade
 6. Limpeza de Logs (manutenção)
@@ -387,10 +373,72 @@
 
 ## 📝 Conclusão
 
-O Multi Migrador já está bem estruturado com as 11 melhorias implementadas. 
-As 24 melhorias adicionais podem ser desenvolvidas gradualmente, com foco nas 
-5 de alta prioridade que têm maior impacto na robustez e usabilidade.
+O Multi Migrador já está bem estruturado com as 11 melhorias implementadas.
+Das 24 melhorias adicionais listadas aqui, **3 das 5 de ALTA prioridade já
+foram implementadas** (Cache de Versão, Validação SHA256 e Sistema de Crash),
+restando Múltiplas Instâncias e Espaço em Disco para fechar a Fase 1.
 
-**Tempo estimado para Fase 1**: 3-4 dias de desenvolvimento
+**Tempo estimado para Fase 1 (restante)**: 1-2 dias de desenvolvimento
 **Tempo estimado para Fase 2**: 2-3 dias de desenvolvimento
 **Tempo estimado para Fase 3**: 1-2 semanas conforme necessidade
+
+---
+
+## 📐 Processo Padrão de Release e Novo Migrador
+
+Documentado aqui porque hoje esse conhecimento só existe espalhado em
+comentários de código e nas mensagens de commit — não há uma lista única a
+seguir. Convertido em checklist para reduzir o risco de esquecer um passo
+(já aconteceu: 4 migradores ficaram fora do pacote por várias releases
+porque a lista de pastas era mantida manualmente — resolvido depois trocando
+para descoberta automática via `git ls-tree` no `gerar_recursos.bat`).
+
+### Checklist de release (bump de versão)
+
+A versão vive em **3 lugares** que precisam ficar sincronizados — divergência
+entre eles não quebra a build, mas o auto-updater (`UAtualizador.pas`) e o
+version info do exe passam a reportar números diferentes:
+
+1. `MultiMigrador.dproj` → `VerInfo_Release` (e `VerInfo_Build` se aplicável)
+2. `MultiMigrador.dproj` → `VerInfo_Keys` → `FileVersion=` e `ProductVersion=`
+3. `UAtualizador.pas` → constante `APP_VERSAO` (comentário no próprio código:
+   *"bump a cada release"*)
+
+Ordem de operações, na sequência que os commits recentes seguiram:
+
+1. Commitar as mudanças de código/migrador (o `gerar_recursos.bat` empacota a
+   partir de `git archive HEAD` — **arquivo não commitado não entra no
+   pacote embutido**, mesmo estando na pasta).
+2. Bumpar a versão nos 3 lugares acima.
+3. Rodar `gerar_recursos.bat` (regenera `migradores.zip` e
+   `DllsEmbutidas.res` a partir do HEAD já commitado).
+4. Recompilar (F9 na IDE ou `msbuild`).
+5. Publicar um **Release no GitHub** com tag `vX.Y.Z` e o
+   `MultiMigrador.exe` compilado como asset — é a única forma de distribuir o
+   exe (não é versionado no repo; ver `.gitignore`) e é o que o
+   auto-updater consulta em `releases/latest`.
+6. Commitar o bump de versão e dar push.
+
+### Estrutura padrão de uma pasta de migrador
+
+Ao adicionar um sistema novo (ex.: commit `66e11ac`, XD SISTEMAS), a pasta
+`<NOME DO SISTEMA>/` deve trazer:
+
+| Arquivo | Obrigatório | Observação |
+|---|---|---|
+| `<Nome>.exe` | Sim | Nome livre — o launcher lista qualquer `*.exe` da pasta (exceto `unins000.exe`); só precisa bater com o `.dproj` se um existir na pasta. |
+| `*.png` | Sim | Ícone do card. **Só `.png` é lido** (`UPrincipal.pas`, busca por `*.png`) — logo em `.jpg` fica sem ícone no card. Não commitar `.jpg` "de apoio": é peso morto no pacote. |
+| `config.ini` | Se o migrador usa conexão a banco | Preservado na atualização se já existir na máquina do cliente (dado de conexão local não é sobrescrito). |
+| DLLs de runtime (`fbclient.dll`, driver do banco de origem, etc.) | Se o exe depende delas | Ficam ao lado do exe, mesmo padrão dos demais migradores. |
+| `orientacoes.txt` | Não | Convenção legada — não é mais lida pela UI (`UPrincipal.pas`: *"As orientações deixaram de ser exibidas aqui"*). Não é erro deixar de fora. |
+
+Nomenclatura do `.exe` **não é estritamente padronizada** hoje (mistura
+`Migrador<Nome>.exe` e `<Nome>.exe` entre as pastas existentes) — a única
+renomeação feita até agora foi pontual (RENSOFTWARE, commit `1aacac1`) para
+evitar conflito com o `gerar_recursos.bat`, não uma padronização geral. Não
+tratar isso como pendência a menos que cause um conflito real.
+
+### Ajuste aplicado nesta revisão
+
+- Removido `XD SISTEMAS/logo.jpg`: arquivo órfão, sem uso (a UI só lê
+  `.png`), deixado no commit `66e11ac` junto com o `.png` equivalente.
