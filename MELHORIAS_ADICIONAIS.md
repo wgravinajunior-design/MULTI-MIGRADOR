@@ -7,6 +7,15 @@
 > documenta o fluxo que já vem sendo seguido nos commits (bump de versão,
 > `gerar_recursos.bat`, estrutura de pasta de migrador) para ele parar de
 > viver só na cabeça de quem commitou e virar checklist.
+>
+> **v3** — release v1.1.21: ao rodar o processo documentado acima para gerar
+> essa release, o `gerar_recursos.bat` reportou sucesso mas o
+> `DllsEmbutidas.res` saiu com 32 bytes (vazio) — o `brcc32` nesta instalação
+> do Delphi 12 (Studio 37) falha silenciosamente, sem erro nem exit code
+> diferente de 0. O script foi corrigido para usar `cgrc` (o compilador de
+> recursos que o próprio `msbuild` do projeto já usa para o VerInfo) e ganhou
+> uma checagem de tamanho mínimo do `.res` gerado, para essa falha nunca mais
+> passar despercebida. Detalhes na seção de processo.
 
 ## 🔍 Melhorias Identificadas (Além das 11 Já Implementadas)
 
@@ -438,7 +447,19 @@ renomeação feita até agora foi pontual (RENSOFTWARE, commit `1aacac1`) para
 evitar conflito com o `gerar_recursos.bat`, não uma padronização geral. Não
 tratar isso como pendência a menos que cause um conflito real.
 
-### Ajuste aplicado nesta revisão
+### Ajustes aplicados nesta revisão
 
 - Removido `XD SISTEMAS/logo.jpg`: arquivo órfão, sem uso (a UI só lê
   `.png`), deixado no commit `66e11ac` junto com o `.png` equivalente.
+- **`gerar_recursos.bat` trocado de `brcc32` para `cgrc`**: nesta instalação
+  do Delphi 12 (Studio 37), `brcc32 DllsEmbutidas.rc` roda, imprime
+  "Recursos gerados com sucesso" e sai com código 0 — mas gera um `.res` de
+  32 bytes, sem nenhum dos 3 recursos (`LIBEAY32`, `SSLEAY32`,
+  `MIGRADORES`). Um exe compilado em cima desse `.res` fica pequeno (~4MB em
+  vez de ~130MB) e sem OpenSSL nem os migradores embutidos, mas compila e
+  roda sem erro nenhum — só quebraria na prática ao faltar DLL/migrador em
+  runtime. Comando novo, testado e funcional:
+  `cgrc -c65001 -=resinator.exe DllsEmbutidas.rc -foDllsEmbutidas.res`
+  (mesma dupla `cgrc`/`resinator` que o `msbuild` do projeto já usa para
+  compilar o VerInfo — ver log de build). O script agora também falha se o
+  `.res` sair menor que 1MB, para essa falha silenciosa nunca mais passar.

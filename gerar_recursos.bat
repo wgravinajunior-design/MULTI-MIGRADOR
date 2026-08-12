@@ -13,7 +13,11 @@ REM
 REM As pastas dos migradores sao descobertas sozinhas (ver abaixo): para
 REM adicionar um sistema novo basta commita-lo, nao ha lista para manter.
 REM
-REM Requer git e brcc32 no PATH (brcc32 fica em ...\Studio\37.0\bin).
+REM Requer git e cgrc no PATH (cgrc fica em ...\Studio\37.0\bin64). NAO use
+REM brcc32: nesta versao do Delphi (Studio 37) ele roda sem erro mas gera um
+REM .res vazio de 32 bytes -- falha silenciosa que produziria um exe sem
+REM DLLs/migradores embutidos. cgrc com o backend resinator e o que o proprio
+REM msbuild do projeto ja usa para o VerInfo, entao e a ferramenta confiavel.
 REM ==========================================================================
 cd /d "%~dp0"
 
@@ -53,8 +57,18 @@ git archive --format=zip -o migradores.zip HEAD --!PASTAS!
 if errorlevel 1 goto :erro
 
 echo [2/2] Compilando DllsEmbutidas.res...
-brcc32 DllsEmbutidas.rc
+cgrc -c65001 -=resinator.exe DllsEmbutidas.rc -foDllsEmbutidas.res
 if errorlevel 1 goto :erro
+
+REM Rede de seguranca contra a mesma falha silenciosa de brcc32: um .res
+REM valido com os 3 recursos (LIBEAY32, SSLEAY32, MIGRADORES) tem, no minimo,
+REM o tamanho do migradores.zip. Se saiu pequeno, algo ficou vazio.
+for %%F in (DllsEmbutidas.res) do if %%~zF LSS 1000000 (
+  echo.
+  echo FALHA: DllsEmbutidas.res saiu pequeno demais ^(%%~zF bytes^). O .res nao
+  echo tem as DLLs/migradores embutidos -- verifique a saida do cgrc acima.
+  goto :erro
+)
 
 echo.
 echo Recursos gerados com sucesso. Agora recompile o MultiMigrador.
