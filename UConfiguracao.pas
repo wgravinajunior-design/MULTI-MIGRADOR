@@ -24,7 +24,7 @@ begin
   if Valor <> '' then
     Result := Valor
   else
-    Result := 'smtp.titan.email';  // padrão
+    Result := 'email-ssl.com.br';  // padrão (Locaweb, SSL implícito na 465)
 end;
 
 function ObterSMTPPorta: Integer;
