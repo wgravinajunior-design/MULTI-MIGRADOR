@@ -13,11 +13,13 @@ REM
 REM As pastas dos migradores sao descobertas sozinhas (ver abaixo): para
 REM adicionar um sistema novo basta commita-lo, nao ha lista para manter.
 REM
-REM Requer git e cgrc no PATH (cgrc fica em ...\Studio\37.0\bin64). NAO use
-REM brcc32: nesta versao do Delphi (Studio 37) ele roda sem erro mas gera um
-REM .res vazio de 32 bytes -- falha silenciosa que produziria um exe sem
-REM DLLs/migradores embutidos. cgrc com o backend resinator e o que o proprio
-REM msbuild do projeto ja usa para o VerInfo, entao e a ferramenta confiavel.
+REM Requer git e resinator.exe no PATH (fica em ...\Studio\37.0\bin64). NAO
+REM use brcc32: nesta versao do Delphi (Studio 37) ele roda sem erro mas gera
+REM um .res vazio de 32 bytes -- falha silenciosa que produziria um exe sem
+REM DLLs/migradores embutidos. NAO use "cgrc -=resinator.exe" tambem: nesta
+REM instalacao ele falha com "Error: .res is not an executable image" (bind
+REM step exige um exe existente como alvo, mesmo so compilando). resinator.exe
+REM chamado direto (o mesmo backend que o cgrc usaria) funciona.
 REM ==========================================================================
 cd /d "%~dp0"
 
@@ -57,7 +59,7 @@ git archive --format=zip -o migradores.zip HEAD --!PASTAS!
 if errorlevel 1 goto :erro
 
 echo [2/2] Compilando DllsEmbutidas.res...
-cgrc -c65001 -=resinator.exe DllsEmbutidas.rc -foDllsEmbutidas.res
+resinator DllsEmbutidas.rc DllsEmbutidas.res
 if errorlevel 1 goto :erro
 
 REM Rede de seguranca contra a mesma falha silenciosa de brcc32: um .res
