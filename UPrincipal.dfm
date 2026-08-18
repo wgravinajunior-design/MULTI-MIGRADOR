@@ -1104,7 +1104,7 @@ object FormPrincipal: TFormPrincipal
       Top = 0
       Width = 840
       Height = 465
-      Align = alClient
+      Align = alTop
       AutoSize = True
       BevelOuter = bvNone
       Color = 15921906
