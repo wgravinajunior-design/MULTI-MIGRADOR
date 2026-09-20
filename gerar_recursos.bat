@@ -78,7 +78,7 @@ goto :fim
 
 :erro
 echo.
-echo FALHA ao gerar os recursos. Verifique se git e brcc32 estao no PATH.
+echo FALHA ao gerar os recursos. Verifique se git e resinator estao no PATH.
 exit /b 1
 
 :fim

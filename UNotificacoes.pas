@@ -1,4 +1,4 @@
-﻿unit UNotificacoes;
+unit UNotificacoes;
 
 // Notificações do Windows Toast (notification center).
 // Requer Windows 10+.
@@ -16,13 +16,15 @@ uses
   UAtualizador;
 
 procedure ExibirNotificacao(const ATitulo, ACorpo: string; const ADuracao: Integer = 5000);
+var
+  HWndPai: HWND;
 begin
   try
-    // Notificação simples via Windows API
-    // Requer Windows 10+ com suporte a toasts
-    // Esta é uma implementação básica que mostra o comportamento desejado
-    // Uma implementação completa usaria Windows.UI.Notifications diretamente
-    MessageBox(0, PChar(ACorpo), PChar(ATitulo), MB_ICONINFORMATION or MB_OK);
+    HWndPai := Application.Handle;
+    if HWndPai = 0 then
+      HWndPai := GetActiveWindow;
+
+    MessageBox(HWndPai, PChar(ACorpo), PChar(ATitulo), MB_ICONINFORMATION or MB_OK or MB_SETFOREGROUND);
   except
     // Silenciosamente ignora erros
   end;
@@ -45,7 +47,7 @@ procedure NotificarProblemaEnviado;
 begin
   ExibirNotificacao(
     'Relatório enviado',
-    'Seu problema foi reportado com sucesso'
+    'Seu problema foi reportado com sucesso.'
   );
 end;
 

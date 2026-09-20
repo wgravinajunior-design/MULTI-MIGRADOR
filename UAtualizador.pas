@@ -1,4 +1,4 @@
-﻿unit UAtualizador;
+unit UAtualizador;
 
 // Auto-atualizacao via GitHub Releases.
 //
@@ -29,7 +29,7 @@ uses
   System.SysUtils, System.Classes;
 
 const
-  APP_VERSAO   = '1.1.42';                   // <-- bump a cada release
+  APP_VERSAO   = '1.1.43';                   // <-- bump a cada release
   GITHUB_OWNER = 'wgravinajunior-design';
   GITHUB_REPO  = 'MULTI-MIGRADOR';
   NOME_EXE     = 'MultiMigrador.exe';
@@ -114,7 +114,7 @@ end;
 function ObterUltimoCheckCache(out AInfo: TInfoAtualizacao): Boolean;
 var
   Reg: TRegistry;
-  Timestamp, JsonData: string;
+  Timestamp: string;
   DataHora, Agora: TDateTime;
 begin
   Result := False;
@@ -128,32 +128,35 @@ begin
 
     try
       Timestamp := Reg.ReadString('VersoesCheckTime');
-      JsonData := Reg.ReadString('VersoesCheckData');
     except
       Exit;
     end;
 
-    if (Timestamp = '') or (JsonData = '') then
+    if Timestamp = '' then
       Exit;
 
-    // Verifica se cache ainda � v�lido (< 24 horas)
+    // Verifica se cache ainda é válido (< 24 horas)
     if not TryStrToDateTime(Timestamp, DataHora) then
       Exit;
 
     Agora := Now;
-    if (Agora - DataHora) > (CACHE_HOURS / 24.0) then
+    if (DataHora > Agora) or ((Agora - DataHora) > (CACHE_HOURS / 24.0)) then
       Exit;
 
-    // Parse JSON do cache
+    // Carrega dados salvos no cache
     try
       AInfo.Sucesso := True;
       AInfo.VersaoRemota := Reg.ReadString('VersaoRemota');
       AInfo.UrlDownload := Reg.ReadString('UrlDownload');
       AInfo.Notas := Reg.ReadString('Notas');
       AInfo.TemAtualizacao := Reg.ReadBool('TemAtualizacao');
+      if Reg.ValueExists('SHA256') then
+        AInfo.SHA256 := Reg.ReadString('SHA256')
+      else
+        AInfo.SHA256 := '';
       Result := True;
-      LogarAcao('Usando cache de vers�o (verif. h� ' +
-        FormatDateTime('h:mm', Agora - DataHora) + ')');
+      LogarAcao('Usando cache de versão (verif. há ' +
+        FormatDateTime('h:nn', Agora - DataHora) + ')');
     except
       Exit;
     end;
@@ -176,6 +179,7 @@ begin
       Reg.WriteString('UrlDownload', AInfo.UrlDownload);
       Reg.WriteString('Notas', AInfo.Notas);
       Reg.WriteBool('TemAtualizacao', AInfo.TemAtualizacao);
+      Reg.WriteString('SHA256', AInfo.SHA256);
     end;
   finally
     Reg.Free;
@@ -237,6 +241,44 @@ begin
   end;
 end;
 
+function ExtrairSHA256DeTexto(const ATexto: string): string;
+var
+  Linhas: TArray<string>;
+  Linha, Palavra: string;
+  Palavras: TArray<string>;
+  function EhHexValido64(const S: string): Boolean;
+  var
+    C: Char;
+  begin
+    if Length(S) <> 64 then
+      Exit(False);
+    for C in S do
+      if not CharInSet(C, ['0'..'9', 'a'..'f', 'A'..'F']) then
+        Exit(False);
+    Result := True;
+  end;
+begin
+  Result := '';
+  if ATexto = '' then
+    Exit;
+
+  Linhas := ATexto.Split([#13, #10]);
+  for Linha in Linhas do
+  begin
+    var L := LowerCase(Trim(Linha));
+    if (Pos('sha256', L) > 0) or (Pos('sha-256', L) > 0) then
+    begin
+      Palavras := Linha.Split([' ', ':', '=', '`', '*', '|', '[', ']', '(', ')', '"', '''']);
+      for Palavra in Palavras do
+      begin
+        var P := Trim(Palavra);
+        if EhHexValido64(P) then
+          Exit(P);
+      end;
+    end;
+  end;
+end;
+
 { ----- Comparacao de versoes ----- }
 
 function LimparVersao(const S: string): string;
@@ -250,13 +292,25 @@ function CompararVersoes(const A, B: string): Integer;
 var
   PA, PB: TArray<string>;
   i, NA, NB, Max: Integer;
+  function ExtrairNumeroInicial(const S: string): Integer;
+  var
+    Digitos: string;
+    C: Char;
+  begin
+    Digitos := '';
+    for C in Trim(S) do
+    begin
+      if CharInSet(C, ['0'..'9']) then
+        Digitos := Digitos + C
+      else
+        Break;
+    end;
+    Result := StrToIntDef(Digitos, 0);
+  end;
   function ParteInt(const Arr: TArray<string>; Idx: Integer): Integer;
   begin
     if (Idx < Length(Arr)) then
-    begin
-      if not TryStrToInt(Trim(Arr[Idx]), Result) then
-        Result := 0;
-    end
+      Result := ExtrairNumeroInicial(Arr[Idx])
     else
       Result := 0;
   end;
@@ -283,6 +337,7 @@ var
   Cli: THTTPClient;
   Resp: IHTTPResponse;
   Url, Corpo: string;
+  ValorJSON: TJSONValue;
   Raiz: TJSONObject;
   Assets: TJSONArray;
   Asset: TJSONValue;
@@ -294,74 +349,82 @@ begin
 
   Cli := THTTPClient.Create;
   try
-    Cli.UserAgent := 'MultiMigrador-Updater';
-    Cli.CustomHeaders['Accept'] := 'application/vnd.github+json';
-    Cli.ConnectionTimeout := 15000;
-    Cli.ResponseTimeout := 20000;
-    Cli.HandleRedirects := True;
-
-    Url := Format('https://api.github.com/repos/%s/%s/releases/latest',
-      [GITHUB_OWNER, GITHUB_REPO]);
     try
+      Cli.UserAgent := 'MultiMigrador-Updater';
+      Cli.CustomHeaders['Accept'] := 'application/vnd.github+json';
+      Cli.ConnectionTimeout := 15000;
+      Cli.ResponseTimeout := 20000;
+      Cli.HandleRedirects := True;
+
+      Url := Format('https://api.github.com/repos/%s/%s/releases/latest',
+        [GITHUB_OWNER, GITHUB_REPO]);
+
       Resp := Cli.Get(Url);
+
+      // 404 = ainda nao ha releases publicados -> nao e erro, so nao ha update.
+      if Resp.StatusCode = 404 then
+      begin
+        Result.Sucesso := True;
+        Result.TemAtualizacao := False;
+        Exit;
+      end;
+
+      if Resp.StatusCode <> 200 then
+      begin
+        Result.Erro := Format('GitHub retornou HTTP %d', [Resp.StatusCode]);
+        Exit;
+      end;
+
+      Corpo := Resp.ContentAsString(TEncoding.UTF8);
+      ValorJSON := TJSONObject.ParseJSONValue(Corpo);
+      if (ValorJSON = nil) or not (ValorJSON is TJSONObject) then
+      begin
+        if ValorJSON <> nil then
+          ValorJSON.Free;
+        Result.Erro := 'Resposta inválida do GitHub';
+        Exit;
+      end;
+
+      Raiz := TJSONObject(ValorJSON);
+      try
+        Tag := '';
+        Raiz.TryGetValue<string>('tag_name', Tag);
+        Result.VersaoRemota := Tag;
+        Raiz.TryGetValue<string>('body', Result.Notas);
+
+        // Procura um asset .exe (de preferencia MultiMigrador.exe).
+        DlUrl := '';
+        if Raiz.TryGetValue<TJSONArray>('assets', Assets) then
+          for i := 0 to Assets.Count - 1 do
+          begin
+            Asset := Assets.Items[i];
+            if not (Asset is TJSONObject) then Continue;
+            Nome := '';
+            (Asset as TJSONObject).TryGetValue<string>('name', Nome);
+            if SameText(ExtractFileExt(Nome), '.exe') then
+            begin
+              (Asset as TJSONObject).TryGetValue<string>('browser_download_url', DlUrl);
+              if SameText(Nome, NOME_EXE) then
+                Break; // preferencia exata; senao fica com o ultimo .exe achado
+            end;
+          end;
+        Result.UrlDownload := DlUrl;
+        Result.SHA256 := ExtrairSHA256DeTexto(Result.Notas);
+        if Result.SHA256 <> '' then
+          LogarAcao('Hash SHA256 identificado nas notas da versão ' + Tag + ': ' + Result.SHA256);
+
+        Result.Sucesso := True;
+        Result.TemAtualizacao :=
+          (Tag <> '') and (CompararVersoes(Tag, APP_VERSAO) > 0) and (DlUrl <> '');
+      finally
+        Raiz.Free;
+      end;
     except
       on E: Exception do
       begin
-        Result.Erro := 'Falha de conexao: ' + E.Message;
-        Exit;
+        Result.Erro := 'Falha ao consultar atualizações: ' + E.Message;
+        LogarErro(Result.Erro);
       end;
-    end;
-
-    // 404 = ainda nao ha releases publicados -> nao e erro, so nao ha update.
-    if Resp.StatusCode = 404 then
-    begin
-      Result.Sucesso := True;
-      Result.TemAtualizacao := False;
-      Exit;
-    end;
-
-    if Resp.StatusCode <> 200 then
-    begin
-      Result.Erro := Format('GitHub retornou HTTP %d', [Resp.StatusCode]);
-      Exit;
-    end;
-
-    Corpo := Resp.ContentAsString(TEncoding.UTF8);
-    Raiz := TJSONObject.ParseJSONValue(Corpo) as TJSONObject;
-    if Raiz = nil then
-    begin
-      Result.Erro := 'Resposta invalida do GitHub';
-      Exit;
-    end;
-    try
-      Tag := '';
-      Raiz.TryGetValue<string>('tag_name', Tag);
-      Result.VersaoRemota := Tag;
-      Raiz.TryGetValue<string>('body', Result.Notas);
-
-      // Procura um asset .exe (de preferencia MultiMigrador.exe).
-      DlUrl := '';
-      if Raiz.TryGetValue<TJSONArray>('assets', Assets) then
-        for i := 0 to Assets.Count - 1 do
-        begin
-          Asset := Assets.Items[i];
-          if not (Asset is TJSONObject) then Continue;
-          Nome := '';
-          (Asset as TJSONObject).TryGetValue<string>('name', Nome);
-          if SameText(ExtractFileExt(Nome), '.exe') then
-          begin
-            (Asset as TJSONObject).TryGetValue<string>('browser_download_url', DlUrl);
-            if SameText(Nome, NOME_EXE) then
-              Break; // preferencia exata; senao fica com o ultimo .exe achado
-          end;
-        end;
-      Result.UrlDownload := DlUrl;
-
-      Result.Sucesso := True;
-      Result.TemAtualizacao :=
-        (Tag <> '') and (CompararVersoes(Tag, APP_VERSAO) > 0) and (DlUrl <> '');
-    finally
-      Raiz.Free;
     end;
   finally
     Cli.Free;
@@ -382,12 +445,19 @@ begin
   // Tenta usar cache primeiro
   if not ObterUltimoCheckCache(FInfo) then
   begin
-    // Se cache inv�lido, consulta GitHub
+    if Terminated or Application.Terminated then
+      Exit;
+    // Se cache inválido, consulta GitHub
     FInfo := ConsultarUltimoRelease;
+    if Terminated or Application.Terminated then
+      Exit;
     // Salva resultado no cache
     if FInfo.Sucesso then
       SalvarCacheVersao(FInfo);
   end;
+
+  if Terminated or Application.Terminated then
+    Exit;
 
   if Assigned(FCallback) then
     Synchronize(DispararCallback);
@@ -395,7 +465,10 @@ end;
 
 procedure TAtualizadorThread.DispararCallback;
 begin
-  FCallback(FInfo);
+  if Application.Terminated then
+    Exit;
+  if Assigned(FCallback) then
+    FCallback(FInfo);
 end;
 
 procedure VerificarAtualizacoesAsync(ACallback: TResultadoProc);
@@ -417,9 +490,11 @@ type
     FTimer: TTimer;
     FPos: Integer;
     FOk: Boolean;
+    FTerminou: Boolean;
     FErro: string;
     procedure Animar(Sender: TObject);
     procedure Concluiu(Sender: TObject);
+    procedure FormShow(Sender: TObject);
     procedure Montar(const AVersao: string);
   public
     function Executar(const AInfo: TInfoAtualizacao; out AErro: string): Boolean;
@@ -445,8 +520,17 @@ end;
 // sincronizado), entao pode mexer na janela com seguranca.
 procedure TJanelaProgresso.Concluiu(Sender: TObject);
 begin
+  FTerminou := True;
   FTimer.Enabled := False;
-  FForm.ModalResult := mrOk;
+  if (FForm <> nil) and (fsModal in FForm.FormState) then
+    FForm.ModalResult := mrOk;
+end;
+
+procedure TJanelaProgresso.FormShow(Sender: TObject);
+begin
+  // Se a thread concluiu antes do ShowModal iniciar o loop, encerra de imediato
+  if FTerminou and (FForm <> nil) then
+    FForm.ModalResult := mrOk;
 end;
 
 procedure TJanelaProgresso.Montar(const AVersao: string);
@@ -511,11 +595,14 @@ var
 begin
   Info := AInfo;          // copia local: e ela que a thread captura
   FOk := False;
+  FTerminou := False;
   FErro := '';
   FPos := -LARGURA_BLOCO;
 
   Montar(LimparVersao(AInfo.VersaoRemota));
   try
+    FForm.OnShow := FormShow;
+
     FTimer := TTimer.Create(FForm);
     FTimer.Interval := 15;
     FTimer.OnTimer := Animar;
@@ -557,6 +644,37 @@ var
   Resp: IHTTPResponse;
   ExeAtual, ExeNovo, ExeOld, Dir: string;
   FS: TFileStream;
+  TamanhoBaixado: Int64;
+
+  function RenomearComRetry(const AOrigem, ADestino: string; const ATentativas: Integer = 5): Boolean;
+  var
+    Tentativa: Integer;
+  begin
+    Result := False;
+    for Tentativa := 1 to ATentativas do
+    begin
+      if RenameFile(AOrigem, ADestino) then
+        Exit(True);
+      Sleep(200);
+    end;
+  end;
+
+  procedure ExcluirComRetry(const ACaminho: string; const ATentativas: Integer = 5);
+  var
+    Tentativa: Integer;
+  begin
+    if not TFile.Exists(ACaminho) then
+      Exit;
+    for Tentativa := 1 to ATentativas do
+    begin
+      try
+        TFile.Delete(ACaminho);
+        Exit;
+      except
+        Sleep(200);
+      end;
+    end;
+  end;
 begin
   Result := False;
   AErro := '';
@@ -573,8 +691,7 @@ begin
     Cli.ConnectionTimeout := 20000;
     Cli.ResponseTimeout := 120000;
     try
-      if TFile.Exists(ExeNovo) then
-        TFile.Delete(ExeNovo);
+      ExcluirComRetry(ExeNovo);
       FS := TFileStream.Create(ExeNovo, fmCreate);
       try
         Resp := Cli.Get(AInfo.UrlDownload, FS);
@@ -585,11 +702,25 @@ begin
       begin
         AErro := Format('Download falhou (HTTP %d).', [Resp.StatusCode]);
         LogarErro('Download falhou: HTTP ' + IntToStr(Resp.StatusCode));
-        if TFile.Exists(ExeNovo) then TFile.Delete(ExeNovo);
+        ExcluirComRetry(ExeNovo);
         Exit;
       end;
 
-      // Valida SHA256 se dispon�vel
+      // Valida integridade por tamanho de conteúdo (ContentLength)
+      if Resp.ContentLength > 0 then
+      begin
+        TamanhoBaixado := TFile.GetSize(ExeNovo);
+        if TamanhoBaixado <> Resp.ContentLength then
+        begin
+          AErro := Format('Download incompleto. Esperado: %d bytes, baixado: %d bytes.',
+            [Resp.ContentLength, TamanhoBaixado]);
+          LogarErro(AErro);
+          ExcluirComRetry(ExeNovo);
+          Exit;
+        end;
+      end;
+
+      // Valida SHA256 se disponivel
       if AInfo.SHA256 <> '' then
       begin
         var SHA256Calculado := CalcularSHA256Arquivo(ExeNovo);
@@ -597,7 +728,7 @@ begin
         begin
           AErro := 'Nao foi possivel calcular SHA256 do arquivo.';
           LogarErro(AErro);
-          if TFile.Exists(ExeNovo) then TFile.Delete(ExeNovo);
+          ExcluirComRetry(ExeNovo);
           Exit;
         end;
 
@@ -606,7 +737,7 @@ begin
           AErro := 'Validacao SHA256 falhou. Arquivo pode estar corrompido.';
           LogarErro('SHA256 esperado: ' + AInfo.SHA256);
           LogarErro('SHA256 obtido: ' + SHA256Calculado);
-          if TFile.Exists(ExeNovo) then TFile.Delete(ExeNovo);
+          ExcluirComRetry(ExeNovo);
           Exit;
         end;
         LogarAcao('SHA256 validado com sucesso');
@@ -617,8 +748,7 @@ begin
       begin
         AErro := 'Erro ao baixar: ' + E.Message;
         LogarErro(AErro);
-        if TFile.Exists(ExeNovo) then
-          try TFile.Delete(ExeNovo); except end;
+        ExcluirComRetry(ExeNovo);
         Exit;
       end;
     end;
@@ -626,22 +756,23 @@ begin
     Cli.Free;
   end;
 
-  // 2) Troca os executaveis. O Windows permite renomear um exe em execucao.
+  // 2) Troca os executaveis com retentativas defensivas contra bloqueio temporario de antivirus
   try
-    if TFile.Exists(ExeOld) then
-      TFile.Delete(ExeOld);
-    RenameFile(ExeAtual, ExeOld);           // libera o nome
-    RenameFile(ExeNovo, ExeAtual);          // novo assume o nome oficial
+    ExcluirComRetry(ExeOld);
+    if not RenomearComRetry(ExeAtual, ExeOld) then
+      raise Exception.Create('Não foi possível renomear o executável atual para backup (.old). Arquivo em uso ou bloqueado.');
+
+    if not RenomearComRetry(ExeNovo, ExeAtual) then
+    begin
+      // Tenta reverter
+      RenomearComRetry(ExeOld, ExeAtual);
+      raise Exception.Create('Não foi possível promover o novo executável (.update). Arquivo em inspeção por antivírus.');
+    end;
   except
     on E: Exception do
     begin
       AErro := 'Nao foi possivel substituir o executavel: ' + E.Message;
       LogarErro(AErro);
-      // tenta reverter
-      try
-        if (not TFile.Exists(ExeAtual)) and TFile.Exists(ExeOld) then
-          RenameFile(ExeOld, ExeAtual);
-      except end;
       Exit;
     end;
   end;
@@ -668,7 +799,7 @@ end;
 
 procedure ReiniciarApp;
 begin
-  ShellExecute(0, 'open', PChar(CaminhoExeAtual), nil,
+  ShellExecute(0, 'open', PChar(CaminhoExeAtual), '/updated',
     PChar(DirApp), SW_SHOWNORMAL);
 end;
 
@@ -714,7 +845,7 @@ end;
 
 procedure ProcessarStartup;
 var
-  Dir, ArqOld, ArqChange: string;
+  Dir, ArqOld, ArqChange, TextoChange: string;
 begin
   Dir := DirApp;
 
@@ -723,10 +854,21 @@ begin
   if TFile.Exists(ArqOld) then
     try TFile.Delete(ArqOld); except end;
 
-  // Remove o changelog pendente (nao mostra mais tela de novidades).
+  // Exibe o changelog da versao recem-instalada (se disponivel) e depois o remove.
   ArqChange := TPath.Combine(Dir, ARQ_CHANGELOG);
   if TFile.Exists(ArqChange) then
-    try TFile.Delete(ArqChange); except end;
+  begin
+    try
+      TextoChange := TFile.ReadAllText(ArqChange, TEncoding.UTF8);
+      if Trim(TextoChange) <> '' then
+        MostrarTexto('Novidades da Atualização', TextoChange);
+    except
+    end;
+    try
+      TFile.Delete(ArqChange);
+    except
+    end;
+  end;
 end;
 
 { ----- Dialogo de confirmacao ----- }
@@ -792,7 +934,7 @@ var
 begin
   F := TForm.CreateNew(nil);
   try
-    F.Caption := 'Atualizacao disponivel';
+    F.Caption := 'Atualização disponível';
     F.Position := poScreenCenter;
     F.BorderStyle := bsDialog;
     F.ClientWidth := 560;
@@ -806,7 +948,7 @@ begin
     L.AutoSize := False;
     L.WordWrap := True;
     L.Font.Style := [fsBold];
-    L.Caption := Format('Ha a versao %s disponivel (voce esta na %s).' + sLineBreak +
+    L.Caption := Format('Há a versão %s disponível (você está na %s).' + sLineBreak +
       'Deseja atualizar agora?',
       [LimparVersao(AInfo.VersaoRemota), APP_VERSAO]);
 
@@ -821,7 +963,7 @@ begin
       M.Text := 'O que mudou:' + sLineBreak + sLineBreak +
                 FormatarNotas(AInfo.Notas)
     else
-      M.Text := '(sem notas de versao)';
+      M.Text := '(sem notas de versão)';
 
     BSim := TButton.Create(F);
     BSim.Parent := F;
@@ -833,7 +975,7 @@ begin
     BNao := TButton.Create(F);
     BNao.Parent := F;
     BNao.SetBounds(454, 348, 90, 34);
-    BNao.Caption := 'Nao';
+    BNao.Caption := 'Não';
     BNao.Cancel := True;
     BNao.ModalResult := mrNo;
 

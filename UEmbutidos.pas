@@ -29,6 +29,7 @@ begin
        (TFile.GetSize(ADestino) = RS.Size) then
       Exit;
     try
+      ForceDirectories(ExtractFilePath(ADestino));
       RS.SaveToFile(ADestino);
     except
       // Sem permissao de escrita ou arquivo em uso: se a DLL ja existe,
@@ -45,12 +46,22 @@ end;
 // "Could not load SSL library".
 procedure ExtrairDLLsEmbutidas;
 var
-  Dir: string;
+  Dir, PathAtual, DirSemBarra: string;
 begin
   Dir := PastaSistemas;
+  DirSemBarra := ExcludeTrailingPathDelimiter(Dir);
+
   ExtrairRecurso('LIBEAY32', Dir + 'libeay32.dll');
   ExtrairRecurso('SSLEAY32', Dir + 'ssleay32.dll');
-  IdOpenSSLSetLibPath(ExcludeTrailingPathDelimiter(Dir));
+  IdOpenSSLSetLibPath(DirSemBarra);
+
+  // Permite que processos filhos e carregadores dinâmicos encontrem as DLLs da pasta de sistemas
+  SetDllDirectory(PChar(DirSemBarra));
+
+  // Adiciona a pasta de sistemas no PATH da sessão do processo para executáveis secundários
+  PathAtual := GetEnvironmentVariable('PATH');
+  if Pos(DirSemBarra, PathAtual) = 0 then
+    SetEnvironmentVariable('PATH', PChar(DirSemBarra + ';' + PathAtual));
 end;
 
 end.

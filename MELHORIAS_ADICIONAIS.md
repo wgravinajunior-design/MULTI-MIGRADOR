@@ -35,16 +35,9 @@
 
 ---
 
-### **3. Gerenciador de Múltiplas Instâncias**
+### ✅ **3. Gerenciador de Múltiplas Instâncias** — IMPLEMENTADO
 **Arquivo**: `MultiMigrador.dpr`
-**Problema**: Pode abrir múltiplas instâncias do launcher
-**Impacto**: Confusão do usuário, consumo de memória
-**Solução Proposta**:
-```
-- Implementar mutex ou named pipe
-- Se já está aberto, trazer janela para frente
-- Evitar múltiplas instâncias
-```
+**Status**: Mutex do Windows implementado. Se uma instância já estiver aberta, a janela existente é restaurada e trazida para frente, prevenindo concorrência de arquivos.
 
 ---
 
@@ -54,16 +47,9 @@
 
 ---
 
-### **5. Verificação de Espaço em Disco**
+### ✅ **5. Verificação de Espaço em Disco** — IMPLEMENTADO
 **Arquivo**: `UMigradores.pas` - função `ExtrairMigradores`
-**Problema**: Não verifica se há espaço livre antes de extrair
-**Impacto**: Extração interrompida, estado inconsistente
-**Solução Proposta**:
-```
-- Verificar espaço livre antes de extrair
-- Se < 100MB, avisar e cancelar
-- Evita corrupção de arquivos
-```
+**Status**: Validação de espaço livre mínimo (250MB) com `GetDiskFreeSpaceEx` antes da extração, evitando corrupção de arquivos e registrando falhas no log.
 
 ---
 
@@ -71,16 +57,9 @@
 
 ## **MÉDIA PRIORIDADE** 🟡
 
-### **6. Limpeza de Arquivos Antigos**
-**Arquivo**: `ULogger.pas`
-**Problema**: Logs crescem indefinidamente
-**Impacto**: Consumo de disco ao longo do tempo
-**Solução Proposta**:
-```
-- Apagar logs com > 30 dias
-- Manter apenas últimos 30 dias
-- Executar na inicialização ou mensalmente
-```
+### ✅ **6. Limpeza de Arquivos Antigos** — IMPLEMENTADO
+**Arquivo**: `ULogger.pas` - procedure `LimparLogsAntigos(const ADias: Integer = 30)` e chamada em `MultiMigrador.dpr`
+**Status**: Executado automaticamente na inicialização da aplicação, expurgando arquivos `.log` com mais de 30 dias para controle de consumo de disco.
 
 ---
 
@@ -150,16 +129,9 @@
 
 ---
 
-### **12. Tratamento de Timeout na UI**
+### ✅ **12. Tratamento de Timeout na UI** — IMPLEMENTADO
 **Arquivo**: `UReportarProblema.pas`
-**Problema**: Se conexão morrer, fica 15 segundos travado
-**Impacto**: UI não responsiva
-**Solução Proposta**:
-```
-- Implementar deadline em thread
-- Mostrar barra de progresso
-- Permitir cancelamento
-```
+**Status**: Envio executado inteiramente em thread em segundo plano (`TEnvioThread`), com backoff exponencial responsivo a cancelamento (`Terminated`), eliminação de memory leak e timeout de socket de 60s para suportar com estabilidade uploads de até 20 MB.
 
 ---
 
@@ -335,9 +307,9 @@
 |---|----------|-----------|--------|--------|-------|--------|
 | 1 | Cache de Versão | ALTA | Baixo | Alto | 9/10 | ✅ Feito |
 | 2 | Validação de Download | ALTA | Médio | Alto | 8/10 | ✅ Feito |
-| 3 | Múltiplas Instâncias | ALTA | Médio | Médio | 7/10 | Pendente |
+| 3 | Múltiplas Instâncias | ALTA | Médio | Médio | 7/10 | ✅ Feito |
 | 4 | Sistema de Crash | ALTA | Alto | Alto | 8/10 | ✅ Feito |
-| 5 | Espaço em Disco | ALTA | Baixo | Médio | 7/10 | Pendente |
+| 5 | Espaço em Disco | ALTA | Baixo | Médio | 7/10 | ✅ Feito |
 | 6 | Limpeza de Logs | MÉDIA | Baixo | Médio | 6/10 |
 | 7 | Compressão de Logs | MÉDIA | Médio | Baixo | 5/10 |
 | 8 | Ícone Notifications | MÉDIA | Baixo | Baixo | 4/10 |

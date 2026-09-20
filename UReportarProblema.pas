@@ -1,4 +1,4 @@
-﻿unit UReportarProblema;
+unit UReportarProblema;
 
 // Janela "Reportar Problema" do Multi Migrador.
 // Monta a UI em codigo (o restante do projeto tambem cria controles em runtime),
@@ -27,6 +27,8 @@ type
     btCancelar: TButton;
     lblStatus: TLabel;
     FPlaceholderAtivo: Boolean;
+    FEhTemaEscuro: Boolean;
+    FThreadEnvio: TThread;
     procedure MontarUI(const ASistemas: TStrings);
     procedure ImportarOrigemClick(Sender: TObject);
     procedure ImportarDestinoClick(Sender: TObject);
@@ -35,8 +37,10 @@ type
     procedure MemoEnter(Sender: TObject);
     procedure MemoExit(Sender: TObject);
     procedure AdicionarImagens(ALista: TListBox);
+    procedure ListBoxKeyDown(Sender: TObject; var Key: Word; Shift: TShiftState);
     procedure DefinirStatus(const ATexto: string; AErro: Boolean);
     procedure EnvioConcluido(Sender: TObject);
+    procedure FormDestroy(Sender: TObject);
   public
     constructor CriarComSistemas(AOwner: TComponent; const ASistemas: TStrings);
   end;
@@ -49,13 +53,30 @@ implementation
 uses
   IdSMTP, IdMessage, IdSSLOpenSSL, IdExplicitTLSClientServerBase,
   IdAttachmentFile, IdText, IdEMailAddress, System.Win.Registry,
-  UConfiguracao;
+  System.IOUtils, UConfiguracao;
 
-// Funções auxiliares
 function EhEmailValido(const AEmail: string): Boolean;
+var
+  AtPos, DotPos: Integer;
 begin
-  Result := (Pos('@', AEmail) > 1) and
-            (Pos('.', AEmail, Pos('@', AEmail)) > Pos('@', AEmail));
+  Result := False;
+  if (AEmail = '') or (Pos(' ', AEmail) > 0) then
+    Exit;
+
+  AtPos := Pos('@', AEmail);
+  if (AtPos <= 1) or (AtPos = Length(AEmail)) then
+    Exit;
+
+  // Garante apenas um '@'
+  if Pos('@', Copy(AEmail, AtPos + 1, Length(AEmail))) > 0 then
+    Exit;
+
+  // Pelo menos um ponto após o '@' e com pelo menos 2 caracteres depois do último ponto
+  DotPos := LastDelimiter('.', AEmail);
+  if (DotPos <= AtPos + 1) or (DotPos >= Length(AEmail) - 1) then
+    Exit;
+
+  Result := True;
 end;
 
 function EhTemaEscuro: Boolean;
@@ -128,11 +149,11 @@ const
 
   PLACEHOLDER = 'ORIENTAÇÕES:' + sLineBreak + sLineBreak +
     '1 - Vincule print do sistema de origem com campos e dados corretos destacados' + sLineBreak +
-    '2 - Vincule print do sistema de destino com os mesmos campos e dados que estao errados e destacados' + sLineBreak +
-    '3 - Coloque a base no OneDrive ou Google Drive e compartilhe o link e nos envie para analise' + sLineBreak +
-    '4 - As correccoes sao liberadas ate 5 dias uteis' + sLineBreak +
-    '5 - Os migradores serao atualizados automaticamente' + sLineBreak + sLineBreak +
-    'Observacoes adicionais:';
+    '2 - Vincule print do sistema de destino com os mesmos campos e dados que estão errados e destacados' + sLineBreak +
+    '3 - Coloque a base no OneDrive ou Google Drive e compartilhe o link e nos envie para análise' + sLineBreak +
+    '4 - As correções são liberadas em até 5 dias úteis' + sLineBreak +
+    '5 - Os migradores serão atualizados automaticamente' + sLineBreak + sLineBreak +
+    'Observações adicionais:';
 
   COR_TOPO_CLARO   = 5052682;    // mesmo azul do cabecalho principal
   COR_FUNDO_CLARO  = 15921906;
@@ -213,8 +234,8 @@ begin
     SMTP.Username := ObterSMTPUsuario;
     SMTP.Password := ObterSMTPSenha;
     SMTP.AuthType := satDefault;
-    SMTP.ConnectTimeout := 10000;
-    SMTP.ReadTimeout := 15000;
+    SMTP.ConnectTimeout := 15000;
+    SMTP.ReadTimeout := 60000;
 
     Msg.From.Address := ObterSMTPUsuario;
     Msg.From.Name := SMTP_REMETENTE;
@@ -247,13 +268,27 @@ begin
 
     for Arq in FOrigem do
       if FileExists(Arq) then
-        with TIdAttachmentFile.Create(Msg.MessageParts, Arq) do
-          FileName := 'ORIGEM_' + ExtractFileName(Arq);
+      begin
+        try
+          with TIdAttachmentFile.Create(Msg.MessageParts, Arq) do
+            FileName := 'ORIGEM_' + ExtractFileName(Arq);
+        except
+          on E: Exception do
+            LogarErro('Falha ao anexar imagem de origem ' + Arq + ': ' + E.Message);
+        end;
+      end;
 
     for Arq in FDestino do
       if FileExists(Arq) then
-        with TIdAttachmentFile.Create(Msg.MessageParts, Arq) do
-          FileName := 'DESTINO_' + ExtractFileName(Arq);
+      begin
+        try
+          with TIdAttachmentFile.Create(Msg.MessageParts, Arq) do
+            FileName := 'DESTINO_' + ExtractFileName(Arq);
+        except
+          on E: Exception do
+            LogarErro('Falha ao anexar imagem de destino ' + Arq + ': ' + E.Message);
+        end;
+      end;
 
     Msg.ContentType := 'multipart/mixed';
 
@@ -272,11 +307,13 @@ begin
 end;
 
 procedure TEnvioThread.Execute;
+var
+  EsperaMs: Integer;
 begin
   FErro := '';
   FTentativa := 0;
 
-  while FTentativa < MAX_TENTATIVAS_ENVIO do
+  while (FTentativa < MAX_TENTATIVAS_ENVIO) and not Terminated do
   begin
     try
       Inc(FTentativa);
@@ -287,8 +324,15 @@ begin
       begin
         FErro := E.ClassName + ': ' + E.Message;
         LogarErro('Tentativa ' + IntToStr(FTentativa) + ' falhou: ' + FErro);
-        if FTentativa < MAX_TENTATIVAS_ENVIO then
-          Sleep(2000 * FTentativa);  // Backoff exponencial
+        if (FTentativa < MAX_TENTATIVAS_ENVIO) and not Terminated then
+        begin
+          EsperaMs := 2000 * FTentativa;
+          while (EsperaMs > 0) and not Terminated do
+          begin
+            Sleep(100);
+            Dec(EsperaMs, 100);
+          end;
+        end;
       end;
     end;
   end;
@@ -300,7 +344,21 @@ constructor TFormReportarProblema.CriarComSistemas(AOwner: TComponent;
   const ASistemas: TStrings);
 begin
   inherited CreateNew(AOwner);
+  FEhTemaEscuro := EhTemaEscuro;
+  FThreadEnvio := nil;
+  OnDestroy := FormDestroy;
   MontarUI(ASistemas);
+end;
+
+procedure TFormReportarProblema.FormDestroy(Sender: TObject);
+begin
+  if FThreadEnvio <> nil then
+  begin
+    FThreadEnvio.OnTerminate := nil;
+    FThreadEnvio.Terminate;
+    FThreadEnvio.FreeOnTerminate := True;
+    FThreadEnvio := nil;
+  end;
 end;
 
 procedure TFormReportarProblema.MontarUI(const ASistemas: TStrings);
@@ -308,7 +366,7 @@ var
   Topo: TPanel;
   lblTit, lblSis, lblEmail, lblRevenda, lblLinkBase, lblOri, lblDes, lblDsc: TLabel;
   btAddOri, btDelOri, btAddDes, btDelDes: TButton;
-  CorTopo, CorFundo, CorTexto, CorHint: TColor;
+  CorTopo, CorFundo, CorTexto, CorHint, CorCampo: TColor;
   EmailSalvo, RevendaSalva: string;
 begin
   Caption := 'Reportar Problema';
@@ -324,6 +382,7 @@ begin
     CorFundo := COR_FUNDO_ESCURO;
     CorTexto := COR_TEXTO_ESCURO;
     CorHint := COR_HINT_ESCURO;
+    CorCampo := $002D2D2D;
   end
   else
   begin
@@ -331,6 +390,7 @@ begin
     CorFundo := COR_FUNDO_CLARO;
     CorTexto := COR_TEXTO_CLARO;
     CorHint := COR_HINT_CLARO;
+    CorCampo := clWhite;
   end;
 
   Color := CorFundo;
@@ -370,6 +430,8 @@ begin
   cbSistema.Parent := Self;
   cbSistema.SetBounds(20, 92, 680, 24);
   cbSistema.Style := csDropDownList;
+  cbSistema.Color := CorCampo;
+  cbSistema.Font.Color := CorTexto;
   if Assigned(ASistemas) then
     cbSistema.Items.Assign(ASistemas);
   if cbSistema.Items.Count > 0 then
@@ -386,6 +448,8 @@ begin
   edEmail := TEdit.Create(Self);
   edEmail.Parent := Self;
   edEmail.SetBounds(20, 146, 330, 24);
+  edEmail.Color := CorCampo;
+  edEmail.Font.Color := CorTexto;
   edEmail.Text := EmailSalvo;
 
   // Revenda
@@ -399,6 +463,8 @@ begin
   edRevenda := TEdit.Create(Self);
   edRevenda.Parent := Self;
   edRevenda.SetBounds(370, 146, 330, 24);
+  edRevenda.Color := CorCampo;
+  edRevenda.Font.Color := CorTexto;
   edRevenda.Text := RevendaSalva;
 
   // Link da Base de Migracao
@@ -412,6 +478,8 @@ begin
   edLinkBase := TEdit.Create(Self);
   edLinkBase.Parent := Self;
   edLinkBase.SetBounds(20, 198, 680, 24);
+  edLinkBase.Color := CorCampo;
+  edLinkBase.Font.Color := CorTexto;
 
   // Imagens de ORIGEM
   lblOri := TLabel.Create(Self);
@@ -424,6 +492,9 @@ begin
   lbOrigem := TListBox.Create(Self);
   lbOrigem.Parent := Self;
   lbOrigem.SetBounds(20, 258, 250, 96);
+  lbOrigem.Color := CorCampo;
+  lbOrigem.Font.Color := CorTexto;
+  lbOrigem.OnKeyDown := ListBoxKeyDown;
 
   btAddOri := TButton.Create(Self);
   btAddOri.Parent := Self;
@@ -449,6 +520,9 @@ begin
   lbDestino := TListBox.Create(Self);
   lbDestino.Parent := Self;
   lbDestino.SetBounds(380, 258, 250, 96);
+  lbDestino.Color := CorCampo;
+  lbDestino.Font.Color := CorTexto;
+  lbDestino.OnKeyDown := ListBoxKeyDown;
 
   btAddDes := TButton.Create(Self);
   btAddDes.Parent := Self;
@@ -476,6 +550,7 @@ begin
   mDescricao.SetBounds(20, 384, 680, 160);
   mDescricao.ScrollBars := ssVertical;
   mDescricao.WordWrap := True;
+  mDescricao.Color := CorCampo;
   mDescricao.OnEnter := MemoEnter;
   mDescricao.OnExit := MemoExit;
   // Estado inicial: marca d'agua em cinza
@@ -512,7 +587,10 @@ begin
   begin
     FPlaceholderAtivo := False;
     mDescricao.Clear;
-    mDescricao.Font.Color := COR_TEXTO_CLARO;
+    if FEhTemaEscuro then
+      mDescricao.Font.Color := COR_TEXTO_ESCURO
+    else
+      mDescricao.Font.Color := COR_TEXTO_CLARO;
   end;
 end;
 
@@ -521,7 +599,10 @@ begin
   if Trim(mDescricao.Text) = '' then
   begin
     FPlaceholderAtivo := True;
-    mDescricao.Font.Color := COR_HINT_CLARO;
+    if FEhTemaEscuro then
+      mDescricao.Font.Color := COR_HINT_ESCURO
+    else
+      mDescricao.Font.Color := COR_HINT_CLARO;
     mDescricao.Text := PLACEHOLDER;
   end;
 end;
@@ -567,6 +648,18 @@ begin
     Lista.Items.Delete(Lista.ItemIndex);
 end;
 
+procedure TFormReportarProblema.ListBoxKeyDown(Sender: TObject; var Key: Word; Shift: TShiftState);
+var
+  Lista: TListBox;
+begin
+  if (Key = VK_DELETE) and (Sender is TListBox) then
+  begin
+    Lista := TListBox(Sender);
+    if Lista.ItemIndex >= 0 then
+      Lista.Items.Delete(Lista.ItemIndex);
+  end;
+end;
+
 procedure TFormReportarProblema.DefinirStatus(const ATexto: string; AErro: Boolean);
 begin
   lblStatus.Caption := ATexto;
@@ -582,7 +675,7 @@ var
   i: Integer;
   Origem, Destino: TArray<string>;
   Descricao, Email, Revenda, LinkBase: string;
-  Thread: TEnvioThread;
+  TamanhoTotalBytes: Int64;
 begin
   if cbSistema.ItemIndex < 0 then
   begin
@@ -652,6 +745,24 @@ begin
     Exit;
   end;
 
+  // Valida tamanho consolidado dos anexos (limite de 20MB para envio SMTP)
+  TamanhoTotalBytes := 0;
+  for i := 0 to lbOrigem.Items.Count - 1 do
+    if FileExists(lbOrigem.Items[i]) then
+      Inc(TamanhoTotalBytes, TFile.GetSize(lbOrigem.Items[i]));
+
+  for i := 0 to lbDestino.Items.Count - 1 do
+    if FileExists(lbDestino.Items[i]) then
+      Inc(TamanhoTotalBytes, TFile.GetSize(lbDestino.Items[i]));
+
+  if TamanhoTotalBytes > (20 * 1024 * 1024) then
+  begin
+    DefinirStatus('O tamanho total das imagens (' +
+      FormatFloat('0.0', TamanhoTotalBytes / (1024 * 1024)) +
+      ' MB) excede o limite máximo permitido de 20 MB.', True);
+    Exit;
+  end;
+
   SetLength(Origem, lbOrigem.Items.Count);
   for i := 0 to lbOrigem.Items.Count - 1 do
     Origem[i] := lbOrigem.Items[i];
@@ -667,16 +778,24 @@ begin
   lblStatus.Font.Color := clBlue;
 
   // Envio em thread para nao travar a janela.
-  Thread := TEnvioThread.Create(cbSistema.Text, Descricao, Email, Revenda, LinkBase, Origem, Destino);
-  Thread.OnTerminate := EnvioConcluido;
-  Thread.Start;
+  FThreadEnvio := TEnvioThread.Create(cbSistema.Text, Descricao, Email, Revenda, LinkBase, Origem, Destino);
+  FThreadEnvio.OnTerminate := EnvioConcluido;
+  FThreadEnvio.Start;
 end;
 
 procedure TFormReportarProblema.EnvioConcluido(Sender: TObject);
 var
   Erro: string;
+  ThreadInstancia: TEnvioThread;
 begin
-  Erro := TEnvioThread(Sender).Erro;
+  ThreadInstancia := TEnvioThread(Sender);
+  try
+    Erro := ThreadInstancia.Erro;
+  finally
+    FThreadEnvio := nil;
+    ThreadInstancia.Free;
+  end;
+
   Screen.Cursor := crDefault;
   btEnviar.Enabled := True;
   btCancelar.Enabled := True;
@@ -684,7 +803,6 @@ begin
   if Erro = '' then
   begin
     DefinirStatus('Relatorio enviado com sucesso!', False);
-    NotificarProblemaEnviado;
     MessageDlg('Relatorio enviado com sucesso para ' + ObterSMTPDestino + '.',
       mtInformation, [mbOK], 0);
     ModalResult := mrOk;
@@ -693,8 +811,7 @@ begin
   begin
     DefinirStatus('Falha ao enviar: ' + Erro, True);
     LogarErro('Falha ao enviar relatório: ' + Erro);
-    MessageDlg('Nao foi possivel enviar o relatorio:'#13#10 + Erro +
-      #13#10#13#10'O relatório será retentado automaticamente.',
+    MessageDlg('Não foi possível enviar o relatório:'#13#10 + Erro,
       mtError, [mbOK], 0);
   end;
 end;

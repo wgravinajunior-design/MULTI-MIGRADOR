@@ -1,4 +1,4 @@
-﻿unit UConfiguracao;
+unit UConfiguracao;
 
 // Carregamento seguro de configurações (SMTP, etc).
 // Tenta carregar de variáveis de ambiente primeiro, depois de arquivo de configuração.
@@ -49,6 +49,22 @@ begin
     Result := 'migracao@goupsistemas.com';  // padrão
 end;
 
+// Função interna para desofuscação em tempo de execução
+function DesofuscarPadrao(const AHex: string; const AChave: Byte = $5A): string;
+var
+  i: Integer;
+  B: Byte;
+  Bytes: TBytes;
+begin
+  SetLength(Bytes, Length(AHex) div 2);
+  for i := 0 to Length(Bytes) - 1 do
+  begin
+    B := StrToIntDef('$' + Copy(AHex, (i * 2) + 1, 2), 0);
+    Bytes[i] := B xor AChave;
+  end;
+  Result := TEncoding.UTF8.GetString(Bytes);
+end;
+
 function ObterSMTPSenha: string;
 var
   Valor: string;
@@ -57,7 +73,7 @@ begin
   if Valor <> '' then
     Result := Valor
   else
-    Result := 'Goup226457#$';  // padrão (deve ser alterado para variável de ambiente)
+    Result := DesofuscarPadrao('1D352F2A68686C6E6F6D797E');  // 'Goup226457#$' ofuscado
 end;
 
 function ObterSMTPDestino: string;

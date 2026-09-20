@@ -1,4 +1,4 @@
-﻿unit UPrincipal;
+unit UPrincipal;
 
 interface
 
@@ -28,8 +28,11 @@ type
     FEdFiltro: TEdit;
     FLblNovoVersao: TLabel;
     FMapaCards: TDictionary<string, TPanel>;
+    FEhTemaEscuro: Boolean;
+    FVerificacaoManual: Boolean;
     function PastaBase: string;
     function LocalizarExecutavel(const ADir: string): string;
+    function LocalizarImagemSistema(const ADir, ANomeSistema: string): string;
     procedure CarregarSistemas;
     procedure CriarCard(const ANome, ACaminho: string);
     procedure CardClick(Sender: TObject);
@@ -41,7 +44,10 @@ type
     procedure FiltroMudou(Sender: TObject);
     procedure AtualizarVisibilidadeCards;
     procedure ConfigurarTema;
-    procedure KeyDown(Sender: TObject; var Key: Word; Shift: TShiftState);
+    procedure FormKeyDown(Sender: TObject; var Key: Word; Shift: TShiftState);
+    procedure FormResize(Sender: TObject);
+  public
+    destructor Destroy; override;
   end;
 
 var
@@ -69,6 +75,18 @@ const
   COR_FUNDO_PRINCIPAL    = $00FAFBFC;
   COR_FUNDO_ESCURO       = $001E1E1E;
 
+// Leitura segura de data/hora de arquivo, blindando contra exceções de I/O em arquivos bloqueados.
+function ObterDataHoraModificacaoSegura(const ACaminho: string): TDateTime;
+begin
+  Result := 0;
+  try
+    if TFile.Exists(ACaminho) then
+      Result := TFile.GetLastWriteTime(ACaminho);
+  except
+    Result := 0;
+  end;
+end;
+
 procedure TFormPrincipal.FormCreate(Sender: TObject);
 var
   ExePath: string;
@@ -87,16 +105,16 @@ begin
   LabelSub.Font.Color := clWhite;
   LabelBuild.Font.Color := clWhite;
 
-  // Campo de Filtro - lado direito da barra azul
+  // Campo de Filtro - lado direito da barra azul, alinhado a 15px do botão reportar
   FEdFiltro := TEdit.Create(Self);
   FEdFiltro.Parent := PanelTopo;
-  FEdFiltro.SetBounds(PanelTopo.Width - 600, 50, 220, 28);
+  FEdFiltro.SetBounds(PanelTopo.Width - 425, 50, 220, 28);
   FEdFiltro.Anchors := [akTop, akRight];
   FEdFiltro.Font.Size := 10;
   FEdFiltro.Font.Name := 'Segoe UI';
   FEdFiltro.TextHint := 'Buscar sistema...';
   FEdFiltro.OnChange := FiltroMudou;
-  FEdFiltro.OnKeyDown := KeyDown;
+  FEdFiltro.OnKeyDown := FormKeyDown;
   FEdFiltro.BorderStyle := bsSingle;
 
   // Aviso de nova versao: fica na linha de cima, logo antes da build. Antes
@@ -127,7 +145,9 @@ begin
   FBtReportar.OnClick := ReportarProblemaClick;
 
   // Atalhos globais da janela
-  Self.OnKeyDown := KeyDown;
+  KeyPreview := True;
+  Self.OnKeyDown := FormKeyDown;
+  Self.OnResize := FormResize;
 
   // Abre maximizado (tela cheia). O tamanho abaixo e o que a janela assume ao
   // ser restaurada pelo usuario -- sem ele, restaurar deixaria a janela no
@@ -146,11 +166,9 @@ begin
 
   // Exibe a data de build com base na ultima modificacao do executavel principal
   ExePath := ParamStr(0);
-  if TFile.Exists(ExePath) then
-  begin
-    BuildDate := TFile.GetLastWriteTime(ExePath);
-    LabelBuild.Caption := 'Build: ' + FormatDateTime('dd/mm/yyyy hh:nn', BuildDate);
-  end
+  BuildDate := ObterDataHoraModificacaoSegura(ExePath);
+  if BuildDate > 0 then
+    LabelBuild.Caption := 'Build: ' + FormatDateTime('dd/mm/yyyy hh:nn', BuildDate)
   else
     LabelBuild.Caption := 'Build: --';
 
@@ -184,17 +202,30 @@ end;
 procedure TFormPrincipal.AtualizacaoVerificada(const AInfo: TInfoAtualizacao);
 var
   Erro: string;
+  Manual: Boolean;
 begin
+  if (Self = nil) or (csDestroying in ComponentState) or Application.Terminated then
+    Exit;
+
+  Manual := FVerificacaoManual;
+  FVerificacaoManual := False;
+
   if not AInfo.Sucesso then
   begin
     LogarErro('Falha ao verificar atualizações: ' + AInfo.Erro);
+    if Manual then
+      MessageDlg('Não foi possível verificar atualizações no momento:'#13#10 + AInfo.Erro,
+        mtWarning, [mbOK], 0);
     Exit;
   end;
 
   if not AInfo.TemAtualizacao then
+  begin
+    if Manual then
+      MessageDlg('Você já está utilizando a versão mais recente do Multi Migrador (v' + APP_VERSAO + ').',
+        mtInformation, [mbOK], 0);
     Exit;
-
-  NotificarAtualizacaoDisponivel(AInfo.VersaoRemota);
+  end;
 
   FLblNovoVersao.Caption := '🔔 Nova versão ' + AInfo.VersaoRemota + ' disponível!';
   FLblNovoVersao.Visible := True;
@@ -221,9 +252,17 @@ end;
 
 procedure TFormPrincipal.FormDestroy(Sender: TObject);
 begin
-  FExes.Free;
-  FSistemas.Free;
-  FMapaCards.Free;
+  FreeAndNil(FExes);
+  FreeAndNil(FSistemas);
+  FreeAndNil(FMapaCards);
+end;
+
+destructor TFormPrincipal.Destroy;
+begin
+  FreeAndNil(FExes);
+  FreeAndNil(FSistemas);
+  FreeAndNil(FMapaCards);
+  inherited;
 end;
 
 procedure TFormPrincipal.ImageLogoClick(Sender: TObject);
@@ -255,6 +294,8 @@ begin
     Reg.Free;
   end;
 
+  FEhTemaEscuro := EhEscuro;
+
   if EhEscuro then
   begin
     Color := COR_FUNDO_ESCURO;
@@ -283,25 +324,63 @@ begin
   AtualizarVisibilidadeCards;
 end;
 
+function NormalizarTextoBusca(const S: string): string;
+var
+  C: Char;
+begin
+  Result := '';
+  for C in Trim(S).ToLower do
+  begin
+    case Ord(C) of
+      $00E1, $00E0, $00E2, $00E3, $00E4: Result := Result + 'a'; // á, à, â, ã, ä
+      $00E9, $00EA, $00E8, $00EB:       Result := Result + 'e'; // é, ê, è, ë
+      $00ED, $00EC, $00EE, $00EF:       Result := Result + 'i'; // í, ì, î, ï
+      $00F3, $00F2, $00F4, $00F5, $00F6: Result := Result + 'o'; // ó, ò, ô, õ, ö
+      $00FA, $00F9, $00FB, $00FC:       Result := Result + 'u'; // ú, ù, û, ü
+      $00E7:                             Result := Result + 'c'; // ç
+      $00F1:                             Result := Result + 'n'; // ñ
+    else
+      Result := Result + C;
+    end;
+  end;
+end;
+
 procedure TFormPrincipal.AtualizarVisibilidadeCards;
 var
   Filtro: string;
   Item: TPair<string, TPanel>;
+  TotalVisiveis: Integer;
+  Visivel: Boolean;
 begin
-  Filtro := LowerCase(Trim(FEdFiltro.Text));
+  Filtro := NormalizarTextoBusca(FEdFiltro.Text);
+  TotalVisiveis := 0;
 
   for Item in FMapaCards do
   begin
     if Filtro = '' then
-      Item.Value.Visible := True
+    begin
+      Item.Value.Visible := True;
+      Inc(TotalVisiveis);
+    end
     else
-      Item.Value.Visible := Pos(Filtro, LowerCase(Item.Key)) > 0;
+    begin
+      Visivel := Pos(Filtro, NormalizarTextoBusca(Item.Key)) > 0;
+      Item.Value.Visible := Visivel;
+      if Visivel then
+        Inc(TotalVisiveis);
+    end;
   end;
 
   ScrollBox.VertScrollBar.Position := 0;
+  FlowCards.Realign;
+
+  if (Filtro <> '') and (TotalVisiveis = 0) then
+    LabelSub.Caption := 'Nenhum sistema encontrado para a busca "' + FEdFiltro.Text + '"'
+  else
+    LabelSub.Caption := 'Selecione o sistema de origem da migração';
 end;
 
-procedure TFormPrincipal.KeyDown(Sender: TObject; var Key: Word; Shift: TShiftState);
+procedure TFormPrincipal.FormKeyDown(Sender: TObject; var Key: Word; Shift: TShiftState);
 begin
   // Ctrl+Q para sair
   if (Key = Ord('Q')) and (ssCtrl in Shift) then
@@ -311,7 +390,8 @@ begin
   // Ctrl+U para verificar atualizações agora
   else if (Key = Ord('U')) and (ssCtrl in Shift) then
   begin
-    MessageDlg('Verificando atualizações...', mtInformation, [mbOK], 0);
+    LogarAcao('Verificação manual de atualizações disparada pelo atalho Ctrl+U');
+    FVerificacaoManual := True;
     VerificarAtualizacoesAsync(AtualizacaoVerificada);
   end
   // Alt+R para reportar problema
@@ -319,6 +399,11 @@ begin
   begin
     ReportarProblemaClick(nil);
   end;
+end;
+
+procedure TFormPrincipal.FormResize(Sender: TObject);
+begin
+  PosicionarAvisoVersao;
 end;
 
 // Sobe a partir da pasta do executavel ate achar a raiz do projeto (onde fica o .dpr).
@@ -329,6 +414,17 @@ end;
 function TFormPrincipal.PastaBase: string;
 begin
   Result := ExcludeTrailingPathDelimiter(PastaSistemas);
+end;
+
+function EhDesinstalador(const ANomeArq: string): Boolean;
+var
+  NomeLower: string;
+begin
+  NomeLower := LowerCase(ANomeArq);
+  Result := NomeLower.StartsWith('unins') or
+            NomeLower.StartsWith('uninstall') or
+            (NomeLower = 'setup.exe') or
+            (NomeLower = 'update.exe');
 end;
 
 // Procura o .exe do migrador dentro da pasta do sistema, escolhendo o build
@@ -359,7 +455,7 @@ begin
     if not TDirectory.Exists(Pasta) then
       Continue;
     for Arquivo in TDirectory.GetFiles(Pasta, '*.exe', TSearchOption.soTopDirectoryOnly) do
-      if not SameText(ExtractFileName(Arquivo), 'unins000.exe') then
+      if not EhDesinstalador(ExtractFileName(Arquivo)) then
         Candidatos := Candidatos + [Arquivo];
   end;
 
@@ -382,7 +478,7 @@ begin
   Melhor := 0;
   for Arquivo in Candidatos do
   begin
-    Data := TFile.GetLastWriteTime(Arquivo);
+    Data := ObterDataHoraModificacaoSegura(Arquivo);
     if (Result = '') or (Data > Melhor) then
     begin
       Result := Arquivo;
@@ -402,15 +498,46 @@ begin
             ((Attr and FILE_ATTRIBUTE_HIDDEN) <> 0);
 end;
 
+function TFormPrincipal.LocalizarImagemSistema(const ADir, ANomeSistema: string): string;
+var
+  Arquivos, Candidatos: TArray<string>;
+  Arq, Ext, NomeBase: string;
+const
+  EXTS_VALIDAS: array[0..4] of string = ('.png', '.jpg', '.jpeg', '.bmp', '.ico');
+begin
+  Result := '';
+  Candidatos := [];
+  for Ext in EXTS_VALIDAS do
+  begin
+    Arquivos := TDirectory.GetFiles(ADir, '*' + Ext, TSearchOption.soTopDirectoryOnly);
+    Candidatos := Candidatos + Arquivos;
+  end;
+
+  if Length(Candidatos) = 0 then
+    Exit;
+
+  for Arq in Candidatos do
+  begin
+    NomeBase := LowerCase(TPath.GetFileNameWithoutExtension(Arq));
+    if (NomeBase = 'logo') or (NomeBase = 'icon') or (NomeBase = 'icone') or
+       (NomeBase = LowerCase(ANomeSistema)) then
+      Exit(Arq);
+  end;
+
+  Result := Candidatos[0];
+end;
+
 procedure TFormPrincipal.CarregarSistemas;
 var
   Dir, Nome, Base: string;
+  Pastas: TArray<string>;
 begin
   Base := PastaBase;
   FlowCards.DisableAlign;
   try
-    for Dir in TDirectory.GetDirectories(Base, '*',
-                 TSearchOption.soTopDirectoryOnly) do
+    Pastas := TDirectory.GetDirectories(Base, '*', TSearchOption.soTopDirectoryOnly);
+    TArray.Sort<string>(Pastas);
+    for Dir in Pastas do
     begin
       Nome := ExtractFileName(Dir);
 
@@ -444,21 +571,18 @@ var
   Fundo, Sombra: TShape;
   LblNome, LblStatus, LblSubtitle: TLabel;
   ImgIcon: TImage;
-  Exe, PngFile: string;
-  PngFiles: TArray<string>;
+  Exe, ImgFile: string;
   TemImagem: Boolean;
   TextLeft, TextWidth: Integer;
   BadgeStatus: TShape;
+  DtModif: TDateTime;
+  DtTexto: string;
 begin
   Exe := LocalizarExecutavel(ACaminho);
 
-  // Procura por imagem .png na pasta do sistema
-  PngFiles := TDirectory.GetFiles(ACaminho, '*.png', TSearchOption.soTopDirectoryOnly);
-  TemImagem := Length(PngFiles) > 0;
-  if TemImagem then
-    PngFile := PngFiles[0]
-  else
-    PngFile := '';
+  // Procura por imagem (.png, .jpg, .jpeg, .bmp, .ico) com prioridade para logos/ícones
+  ImgFile := LocalizarImagemSistema(ACaminho, ANome);
+  TemImagem := (ImgFile <> '');
 
   Card := TPanel.Create(Self);
   Card.Parent := FlowCards;
@@ -483,7 +607,10 @@ begin
   Sombra.SetBounds(4, 6, 272, 152);
   Sombra.Anchors := [akLeft, akTop, akRight, akBottom];
   Sombra.Shape := stRoundRect;
-  Sombra.Brush.Color := COR_SOMBRA;
+  if FEhTemaEscuro then
+    Sombra.Brush.Color := COR_SOMBRA_ESCURO
+  else
+    Sombra.Brush.Color := COR_SOMBRA;
   Sombra.Pen.Style := psClear;
   Sombra.Enabled := False;
 
@@ -493,9 +620,17 @@ begin
   Fundo.SetBounds(0, 0, 280, 160);
   Fundo.Anchors := [akLeft, akTop, akRight, akBottom];
   Fundo.Shape := stRoundRect;
-  Fundo.Brush.Color := COR_CARD;
+  if FEhTemaEscuro then
+  begin
+    Fundo.Brush.Color := COR_CARD_ESCURO;
+    Fundo.Pen.Color := COR_BORDA_ESCURO;
+  end
+  else
+  begin
+    Fundo.Brush.Color := COR_CARD;
+    Fundo.Pen.Color := COR_BORDA;
+  end;
   Fundo.Pen.Style := psSolid;
-  Fundo.Pen.Color := COR_BORDA;
   Fundo.Pen.Width := 1;
   Fundo.Enabled := False;
 
@@ -510,7 +645,7 @@ begin
     ImgIcon.Stretch := True;
     ImgIcon.Transparent := True;
     try
-      ImgIcon.Picture.LoadFromFile(PngFile);
+      ImgIcon.Picture.LoadFromFile(ImgFile);
     except
       // Se houver erro ao carregar a imagem, ignora silenciosamente
     end;
@@ -537,7 +672,10 @@ begin
   LblNome.Font.Name := 'Segoe UI';
   LblNome.Font.Size := 12;
   LblNome.Font.Style := [fsBold];
-  LblNome.Font.Color := $00333333;
+  if FEhTemaEscuro then
+    LblNome.Font.Color := $00E0E0E0
+  else
+    LblNome.Font.Color := $00333333;
   LblNome.Transparent := True;
   LblNome.OnClick := CardClick;
   LblNome.OnMouseEnter := CardMouseEnter;
@@ -550,7 +688,10 @@ begin
   LblSubtitle.Caption := 'Migrador de Dados';
   LblSubtitle.Font.Name := 'Segoe UI';
   LblSubtitle.Font.Size := 8;
-  LblSubtitle.Font.Color := $00999999;
+  if FEhTemaEscuro then
+    LblSubtitle.Font.Color := $00888888
+  else
+    LblSubtitle.Font.Color := $00999999;
   LblSubtitle.Transparent := True;
   LblSubtitle.OnClick := CardClick;
   LblSubtitle.OnMouseEnter := CardMouseEnter;
@@ -577,9 +718,18 @@ begin
 
   if Exe <> '' then
   begin
+    DtModif := ObterDataHoraModificacaoSegura(Exe);
+    if DtModif > 0 then
+      DtTexto := FormatDateTime('dd/mm/yyyy', DtModif)
+    else
+      DtTexto := '--';
+
     LblStatus.Caption := ExtractRelativePath(IncludeTrailingPathDelimiter(ACaminho), Exe) +
-      #13#10'Versão: ' + FormatDateTime('dd/mm/yyyy', TFile.GetLastWriteTime(Exe));
-    LblStatus.Font.Color := clGrayText;
+      #13#10'Versão: ' + DtTexto;
+    if FEhTemaEscuro then
+      LblStatus.Font.Color := $00AAAAAA
+    else
+      LblStatus.Font.Color := clGrayText;
     BadgeStatus.Brush.Color := $0040C040;  // Verde
     BadgeStatus.SetBounds(TextLeft + TextWidth - 20, 16, 16, 16);
   end
@@ -605,10 +755,15 @@ begin
   begin
     if Sender is TPanel then
       Card := TPanel(Sender)
+    else if (TControl(Sender).Parent is TPanel) then
+      Card := TPanel(TControl(Sender).Parent)
     else
-      Card := TPanel(TControl(Sender).Parent);
+      Exit;
   end
   else
+    Exit;
+
+  if (Card = nil) or (Card.Tag < 0) or (Card.Tag >= FExes.Count) then
     Exit;
 
   Exe := FExes[Card.Tag];
@@ -617,6 +772,14 @@ begin
     LogarErro('Executável não encontrado na pasta: ' + Card.Hint);
     MessageDlg('Nenhum executável (.exe) foi encontrado na pasta:'#13#10 + Card.Hint,
       mtWarning, [mbOK], 0);
+    Exit;
+  end;
+
+  if not TFile.Exists(Exe) then
+  begin
+    LogarErro('Arquivo executável inexistente no disco: ' + Exe);
+    MessageDlg('O executável do migrador não foi encontrado no disco:'#13#10 + Exe,
+      mtError, [mbOK], 0);
     Exit;
   end;
 
@@ -647,15 +810,28 @@ begin
     begin
       if (Card.Controls[i] is TShape) and (Card.Controls[i].Top = 0) then
       begin
-        // Fundo
-        TShape(Card.Controls[i]).Brush.Color := COR_HOVER;
-        TShape(Card.Controls[i]).Pen.Color := COR_BORDA_HOVER;
+        // Fundo do card
+        if FEhTemaEscuro then
+        begin
+          TShape(Card.Controls[i]).Brush.Color := COR_HOVER_ESCURO;
+          TShape(Card.Controls[i]).Pen.Color := COR_BORDA_HOVER_ESCURO;
+        end
+        else
+        begin
+          TShape(Card.Controls[i]).Brush.Color := COR_HOVER;
+          TShape(Card.Controls[i]).Pen.Color := COR_BORDA_HOVER;
+        end;
         TShape(Card.Controls[i]).Pen.Width := 2;
       end
       else if Card.Controls[i] is TLabel then
       begin
         if TLabel(Card.Controls[i]).Font.Style = [fsBold] then
-          TLabel(Card.Controls[i]).Font.Color := COR_BORDA_HOVER;
+        begin
+          if FEhTemaEscuro then
+            TLabel(Card.Controls[i]).Font.Color := COR_BORDA_HOVER_ESCURO
+          else
+            TLabel(Card.Controls[i]).Font.Color := COR_BORDA_HOVER;
+        end;
       end;
     end;
   end;
@@ -677,15 +853,28 @@ begin
     begin
       if (Card.Controls[i] is TShape) and (Card.Controls[i].Top = 0) then
       begin
-        // Fundo
-        TShape(Card.Controls[i]).Brush.Color := COR_CARD;
-        TShape(Card.Controls[i]).Pen.Color := COR_BORDA;
+        // Fundo do card restaurado
+        if FEhTemaEscuro then
+        begin
+          TShape(Card.Controls[i]).Brush.Color := COR_CARD_ESCURO;
+          TShape(Card.Controls[i]).Pen.Color := COR_BORDA_ESCURO;
+        end
+        else
+        begin
+          TShape(Card.Controls[i]).Brush.Color := COR_CARD;
+          TShape(Card.Controls[i]).Pen.Color := COR_BORDA;
+        end;
         TShape(Card.Controls[i]).Pen.Width := 1;
       end
       else if Card.Controls[i] is TLabel then
       begin
         if TLabel(Card.Controls[i]).Font.Style = [fsBold] then
-          TLabel(Card.Controls[i]).Font.Color := $00333333;
+        begin
+          if FEhTemaEscuro then
+            TLabel(Card.Controls[i]).Font.Color := $00E0E0E0
+          else
+            TLabel(Card.Controls[i]).Font.Color := $00333333;
+        end;
       end;
     end;
   end;

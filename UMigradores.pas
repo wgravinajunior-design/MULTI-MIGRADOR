@@ -28,12 +28,22 @@ implementation
 
 uses
   Winapi.Windows, System.SysUtils, System.Classes, System.IOUtils, System.Zip,
-  UAtualizador;
+  UAtualizador, ULogger;
 
 {$WARN SYMBOL_PLATFORM OFF}
 
 const
   MARCADOR = '.migradores.ver';
+  MIN_ESPACO_LIVRE_BYTES = 250 * 1024 * 1024; // 250 MB mínimos necessários
+
+function TemEspacoLivreSuficiente(const ADir: string; ABytesNecessarios: UInt64): Boolean;
+var
+  LivreParaChamador, TotalBytes: Int64;
+begin
+  Result := True;
+  if GetDiskFreeSpaceEx(PChar(ADir), LivreParaChamador, TotalBytes, nil) then
+    Result := (UInt64(LivreParaChamador) >= ABytesNecessarios);
+end;
 
 function EhAmbienteDeProjeto: Boolean;
 var
@@ -77,10 +87,11 @@ procedure ExtrairMigradores;
 var
   RS: TResourceStream;
   Zip: TZipFile;
-  Dir, NomeArq, Destino: string;
+  Dir, NomeArq, Destino, CaminhoNormalizado, DirNormalizado: string;
   Bytes: TBytes;
   i: Integer;
   Projeto: Boolean;
+  HouveFalhaCritica: Boolean;
 begin
   if FindResource(HInstance, 'MIGRADORES', RT_RCDATA) = 0 then
     Exit;
@@ -92,17 +103,35 @@ begin
   if VersaoExtraida(Dir) = APP_VERSAO then
     Exit;
 
+  // Verifica se há espaço livre em disco antes de descompactar
+  if not TemEspacoLivreSuficiente(Dir, MIN_ESPACO_LIVRE_BYTES) then
+  begin
+    LogarErro('Espaço em disco insuficiente para extrair os migradores em: ' + Dir);
+    Exit;
+  end;
+
+  HouveFalhaCritica := False;
   RS := TResourceStream.Create(HInstance, 'MIGRADORES', RT_RCDATA);
   try
     Zip := TZipFile.Create;
     try
       Zip.Open(RS, zmRead);
+      DirNormalizado := IncludeTrailingPathDelimiter(TPath.GetFullPath(Dir));
+
       for i := 0 to Zip.FileCount - 1 do
       begin
         NomeArq := Zip.FileName[i];
         // normaliza separadores para Windows
         NomeArq := StringReplace(NomeArq, '/', '\', [rfReplaceAll]);
         Destino := Dir + NomeArq;
+
+        // Sanitização contra Path Traversal (Zip Slip)
+        CaminhoNormalizado := TPath.GetFullPath(Destino);
+        if not CaminhoNormalizado.StartsWith(DirNormalizado, True) then
+        begin
+          LogarErro('Tentativa de extração bloqueada fora da pasta de destino: ' + NomeArq);
+          Continue;
+        end;
 
         // entrada de diretorio
         if (NomeArq = '') or NomeArq.EndsWith('\') then
@@ -127,12 +156,23 @@ begin
         if Projeto and TFile.Exists(Destino) then
           Continue;
 
+        // Se o arquivo já existe com o mesmo tamanho descompactado, preserva e pula
+        if TFile.Exists(Destino) and (TFile.GetSize(Destino) = Int64(Zip.FileInfo[i].UncompressedSize64)) then
+          Continue;
+
         try
           ForceDirectories(ExtractFilePath(Destino));
           Zip.Read(i, Bytes);
           TFile.WriteAllBytes(Destino, Bytes);
         except
-          // arquivo em uso ou sem permissao: ignora e segue com os demais
+          on E: Exception do
+          begin
+            // Se o arquivo já existe no destino, a falha ao sobrescrever decorre
+            // do arquivo estar aberto em execução no momento. Não é falha crítica.
+            if not TFile.Exists(Destino) then
+              HouveFalhaCritica := True;
+            LogarErro('Falha ao extrair arquivo: ' + NomeArq + ' (' + E.Message + ')');
+          end;
         end;
       end;
     finally
@@ -142,15 +182,20 @@ begin
     RS.Free;
   end;
 
-  // grava o marcador da versao extraida. Se ja existe (oculto), limpa o atributo
-  // antes para o WriteAllText conseguir sobrescrever; depois volta a ocultar.
-  try
-    if TFile.Exists(Dir + MARCADOR) then
-      TFile.SetAttributes(Dir + MARCADOR, []);
-    TFile.WriteAllText(Dir + MARCADOR, APP_VERSAO);
-    TFile.SetAttributes(Dir + MARCADOR, [TFileAttribute.faHidden]);
-  except
-    // opcional; ignora falha
+  // grava o marcador da versao extraida apenas se nao houve falha critica. Se ja existe (oculto),
+  // limpa o atributo antes para o WriteAllText conseguir sobrescrever; depois volta a ocultar.
+  if not HouveFalhaCritica then
+  begin
+    try
+      if TFile.Exists(Dir + MARCADOR) then
+        TFile.SetAttributes(Dir + MARCADOR, []);
+      TFile.WriteAllText(Dir + MARCADOR, APP_VERSAO);
+      TFile.SetAttributes(Dir + MARCADOR, [TFileAttribute.faHidden]);
+      LogarAcao('Pacote de migradores v' + APP_VERSAO + ' extraído com sucesso');
+    except
+      on E: Exception do
+        LogarErro('Erro ao gravar marcador de versão: ' + E.Message);
+    end;
   end;
 end;
 

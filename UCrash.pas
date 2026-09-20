@@ -1,4 +1,4 @@
-﻿unit UCrash;
+unit UCrash;
 
 // Sistema de tratamento de exceções e crash report.
 // Captura exceções não tratadas e salva stack trace para debug.
@@ -22,9 +22,20 @@ class procedure TCrashHandler.HandlerExcecao(Sender: TObject; E: Exception);
 var
   LogArquivo: string;
   Conteudo: TStringList;
-  Mensagem: string;
+  Mensagem, NomeClasse, MsgErro: string;
 begin
   try
+    if E <> nil then
+    begin
+      NomeClasse := E.ClassName;
+      MsgErro := E.Message;
+    end
+    else
+    begin
+      NomeClasse := 'Exceção Desconhecida';
+      MsgErro := 'Falha não especificada ou erro de ponteiro nulo.';
+    end;
+
     // Salva log de crash
     LogArquivo := IncludeTrailingPathDelimiter(
       TPath.GetTempPath) + 'MultiMigrador_Crash_' +
@@ -37,8 +48,8 @@ begin
       Conteudo.Add('Executável: ' + ParamStr(0));
       Conteudo.Add('');
       Conteudo.Add('=== EXCEÇÃO ===');
-      Conteudo.Add('Tipo: ' + E.ClassName);
-      Conteudo.Add('Mensagem: ' + E.Message);
+      Conteudo.Add('Tipo: ' + NomeClasse);
+      Conteudo.Add('Mensagem: ' + MsgErro);
       Conteudo.Add('');
       Conteudo.Add('=== INFORMAÇÕES DO SISTEMA ===');
       Conteudo.Add('OS: Windows');
@@ -46,7 +57,7 @@ begin
         IntToStr(GetSystemMetrics(SM_CYSCREEN)));
 
       try
-        Conteudo.SaveToFile(LogArquivo);
+        Conteudo.SaveToFile(LogArquivo, TEncoding.UTF8);
         LogarErro('CRASH: Log salvo em ' + LogArquivo);
       except
       end;
@@ -57,13 +68,13 @@ begin
     // Mostra dialog ao usuário
     Mensagem :=
       'Ocorreu um erro inesperado no Multi Migrador:' + sLineBreak + sLineBreak +
-      'Tipo: ' + E.ClassName + sLineBreak +
-      'Mensagem: ' + E.Message + sLineBreak + sLineBreak +
+      'Tipo: ' + NomeClasse + sLineBreak +
+      'Mensagem: ' + MsgErro + sLineBreak + sLineBreak +
       'Por favor, relate este erro usando "Reportar Problema" ' +
       'para que possamos corrigi-lo.';
 
     MessageDlg(Mensagem, mtError, [mbOK], 0);
-    LogarErro('CRASH NÃO TRATADO: ' + E.ClassName + ': ' + E.Message);
+    LogarErro('CRASH NÃO TRATADO: ' + NomeClasse + ': ' + MsgErro);
   except
   end;
 end;
