@@ -455,3 +455,12 @@ Get-ChildItem *.pas,*.dpr | ForEach-Object { $b=[IO.File]::ReadAllBytes($_.FullN
 ```
 
 Adicionado ao checklist de release: **passo 0 — conferir BOM UTF-8 nos fontes** e olhar visualmente as telas (principal, atualizador, reportar problema, configuração, notificações) procurando `Ã`/`Â` no texto.
+
+---
+
+## ⏱️ Desempenho de abertura (medido na v1.1.46)
+
+- O `MultiMigrador.exe` tem ~173 MB porque embute todos os migradores (recurso `MIGRADORES`). Medição: o Windows leva **~10-12 s** para liberar o processo (varredura do antivírus sobre o exe grande, antes de rodar qualquer código nosso); depois disso o app abre em **~1 s** (0,9 s de CPU).
+- Portanto, otimizar o código do app não reduz esse tempo. O que reduz é o **tamanho do exe**: a solução estrutural é tirar os migradores de dentro do exe (launcher pequeno + pacote de migradores baixado/atualizado à parte, como asset do release). Ainda não implementado.
+- Alternativa imediata (por máquina): exclusão do Windows Defender para o exe e para `%LOCALAPPDATA%\MultiMigrador`.
+- A atualização automática baixa o exe inteiro (~165 MB); a janela agora mostra progresso real (%, MB baixados).

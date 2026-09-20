@@ -29,7 +29,7 @@ uses
   System.SysUtils, System.Classes;
 
 const
-  APP_VERSAO   = '1.1.46';                   // <-- bump a cada release
+  APP_VERSAO   = '1.1.47';                   // <-- bump a cada release
   GITHUB_OWNER = 'wgravinajunior-design';
   GITHUB_REPO  = 'MULTI-MIGRADOR';
   NOME_EXE     = 'MultiMigrador.exe';
@@ -91,13 +91,19 @@ uses
   System.Net.HttpClient,
   System.Net.URLClient, System.JSON, System.UITypes,
   Vcl.Forms, Vcl.Controls, Vcl.StdCtrls, Vcl.Graphics, Vcl.Dialogs, Vcl.ExtCtrls,
-  Vcl.ComCtrls, System.Win.Registry, ULogger, System.Hash;
+  Vcl.ComCtrls, System.Win.Registry, ULogger, System.Hash, System.SyncObjs;
 
 const
   ARQ_CHANGELOG = 'CHANGELOG_PENDENTE.txt';
   SUFIXO_OLD    = '.old';
   SUFIXO_UPDATE = '.update';
   CACHE_HOURS   = 24;
+
+var
+  // Progresso do download: escrito pela thread de download, lido pelo timer da
+  // janela de progresso.
+  GBaixado: Int64;
+  GTotal: Int64;
 
 function DirApp: string;
 begin
@@ -492,6 +498,7 @@ type
     FOk: Boolean;
     FTerminou: Boolean;
     FErro: string;
+    FLblPct: TLabel;
     procedure Animar(Sender: TObject);
     procedure Concluiu(Sender: TObject);
     procedure FormShow(Sender: TObject);
@@ -509,11 +516,36 @@ const
   COR_TITULO = $003F3F3F;
 
 procedure TJanelaProgresso.Animar(Sender: TObject);
+var
+  Baixado, Total: Int64;
+  Pct: Integer;
 begin
+  Baixado := TInterlocked.Read(GBaixado);
+  Total := TInterlocked.Read(GTotal);
+
+  // Tamanho conhecido: barra de progresso real. Desconhecido (o servidor nao
+  // informou o tamanho): volta ao bloco que corre, para nao parecer travado.
+  if Total > 0 then
+  begin
+    if Baixado > Total then
+      Baixado := Total;
+    Pct := Integer((Baixado * 100) div Total);
+    FBloco.SetBounds(0, 0, Integer((Baixado * FTrilho.ClientWidth) div Total),
+      FTrilho.ClientHeight);
+    if Pct >= 100 then
+      FLblPct.Caption := 'Instalando a nova versão...'
+    else
+      FLblPct.Caption := Format('%d%%  (%.1f de %.1f MB)',
+        [Pct, Baixado / (1024 * 1024), Total / (1024 * 1024)]);
+    Exit;
+  end;
+
   Inc(FPos, PASSO_BLOCO);
   if FPos > FTrilho.ClientWidth then
     FPos := -LARGURA_BLOCO;
   FBloco.Left := FPos;
+  if Baixado > 0 then
+    FLblPct.Caption := Format('%.1f MB baixados', [Baixado / (1024 * 1024)]);
 end;
 
 // Chamado na thread principal quando o download termina (OnTerminate roda
@@ -577,9 +609,16 @@ begin
   FBloco.ParentBackground := False;
   FBloco.Color := COR_BLOCO;
 
+  FLblPct := TLabel.Create(FForm);
+  FLblPct.Parent := FForm;
+  FLblPct.SetBounds(32, 114, 416, 18);
+  FLblPct.AutoSize := False;
+  FLblPct.Font.Color := COR_TITULO;
+  FLblPct.Caption := 'Conectando...';
+
   Lb := TLabel.Create(FForm);
   Lb.Parent := FForm;
-  Lb.SetBounds(32, 130, 416, 40);
+  Lb.SetBounds(32, 142, 416, 40);
   Lb.AutoSize := False;
   Lb.WordWrap := True;
   Lb.Font.Color := clGrayText;
@@ -598,6 +637,8 @@ begin
   FTerminou := False;
   FErro := '';
   FPos := -LARGURA_BLOCO;
+  TInterlocked.Exchange(GBaixado, 0);
+  TInterlocked.Exchange(GTotal, 0);
 
   Montar(LimparVersao(AInfo.VersaoRemota));
   try
@@ -690,6 +731,14 @@ begin
     Cli.HandleRedirects := True;
     Cli.ConnectionTimeout := 20000;
     Cli.ResponseTimeout := 120000;
+    // Alimenta a barra de progresso (lida pelo timer da janela, na thread principal)
+    Cli.ReceiveDataCallback :=
+      procedure(const Sender: TObject; AContentLength, AReadCount: Int64;
+        var AAbort: Boolean)
+      begin
+        TInterlocked.Exchange(GTotal, AContentLength);
+        TInterlocked.Exchange(GBaixado, AReadCount);
+      end;
     try
       ExcluirComRetry(ExeNovo);
       FS := TFileStream.Create(ExeNovo, fmCreate);
