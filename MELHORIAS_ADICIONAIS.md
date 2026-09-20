@@ -435,3 +435,23 @@ tratar isso como pendência a menos que cause um conflito real.
   (mesma dupla `cgrc`/`resinator` que o `msbuild` do projeto já usa para
   compilar o VerInfo — ver log de build). O script agora também falha se o
   `.res` sair menor que 1MB, para essa falha silenciosa nunca mais passar.
+
+---
+
+## 🔤 Codificação de arquivos-fonte (OBRIGATÓRIO)
+
+**Regra:** todo `.pas` e `.dpr` do projeto deve ser salvo em **UTF-8 COM BOM** (`EF BB BF`).
+
+**Por quê:** o Delphi só interpreta um fonte como UTF-8 se houver BOM; sem ele, lê como ANSI (Windows-1252) e os acentos aparecem quebrados na tela (`versão` vira `versÃ£o`). Isso aconteceu na v1.1.44: editores/ferramentas gravaram os fontes em UTF-8 sem BOM e o atualizador exibiu `Baixando a versÃ£o 1.1.44`.
+
+**Como aplicar:**
+- Ao editar ou gerar arquivos `.pas`/`.dpr` (IDE, VS Code, Claude, scripts), conferir que o BOM continua presente. Se o editor removeu, regravar como "UTF-8 with BOM".
+- `.dfm` é gravado só com ASCII (acentos como `#227`), não precisa de BOM.
+- Todo texto visível ao usuário deve ter **acentuação correta em português** (ção, é, á, etc.) — nunca escrever sem acento para "contornar" o problema.
+- Antes de cada release, rodar a checagem abaixo. Se listar algum arquivo sem BOM, corrigir antes de compilar:
+
+```powershell
+Get-ChildItem *.pas,*.dpr | ForEach-Object { $b=[IO.File]::ReadAllBytes($_.FullName); if($b[0] -ne 0xEF){ $_.Name } }
+```
+
+Adicionado ao checklist de release: **passo 0 — conferir BOM UTF-8 nos fontes** e olhar visualmente as telas (principal, atualizador, reportar problema, configuração, notificações) procurando `Ã`/`Â` no texto.

@@ -1,4 +1,4 @@
-unit UMigradores;
+﻿unit UMigradores;
 
 // Extrai o pacote de migradores (recurso MIGRADORES = migradores.zip) para a
 // pasta do executavel, tornando o Multi Migrador um unico exe que ja traz todos

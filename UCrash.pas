@@ -1,4 +1,4 @@
-unit UCrash;
+﻿unit UCrash;
 
 // Sistema de tratamento de exceções e crash report.
 // Captura exceções não tratadas e salva stack trace para debug.

@@ -1,4 +1,4 @@
-unit UPrincipal;
+﻿unit UPrincipal;
 
 interface
 

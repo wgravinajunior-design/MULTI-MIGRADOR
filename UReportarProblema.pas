@@ -1,4 +1,4 @@
-unit UReportarProblema;
+﻿unit UReportarProblema;
 
 // Janela "Reportar Problema" do Multi Migrador.
 // Monta a UI em codigo (o restante do projeto tambem cria controles em runtime),

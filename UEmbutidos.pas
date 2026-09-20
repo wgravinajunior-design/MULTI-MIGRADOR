@@ -1,4 +1,4 @@
-unit UEmbutidos;
+﻿unit UEmbutidos;
 
 // Extrai as DLLs do OpenSSL embutidas como recursos (DllsEmbutidas.rc) para a
 // pasta do executavel, tornando o exe autossuficiente em qualquer maquina.
