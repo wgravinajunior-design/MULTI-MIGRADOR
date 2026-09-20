@@ -178,7 +178,14 @@ begin
   CarregarSistemas;
 
   // Limpeza pos-atualizacao + exibe o changelog da versao recem-instalada.
-  ProcessarStartup;
+  // Adiado: o changelog abre um dialogo modal e, chamado aqui dentro do
+  // FormCreate, prendia o app numa janela em branco (form ainda nao pintado)
+  // com o dialogo escondido atras dela.
+  TThread.ForceQueue(nil,
+    procedure
+    begin
+      ProcessarStartup;
+    end);
 
   // Verifica no GitHub se ha versao mais nova (em background, sem travar a UI).
   VerificarAtualizacoesAsync(AtualizacaoVerificada);

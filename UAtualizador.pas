@@ -29,7 +29,7 @@ uses
   System.SysUtils, System.Classes;
 
 const
-  APP_VERSAO   = '1.1.45';                   // <-- bump a cada release
+  APP_VERSAO   = '1.1.46';                   // <-- bump a cada release
   GITHUB_OWNER = 'wgravinajunior-design';
   GITHUB_REPO  = 'MULTI-MIGRADOR';
   NOME_EXE     = 'MultiMigrador.exe';
@@ -814,7 +814,8 @@ begin
   F := TForm.CreateNew(nil);
   try
     F.Caption := ATitulo;
-    F.Position := poScreenCenter;
+    F.PopupMode := pmAuto;
+    F.Position := poMainFormCenter;
     F.BorderStyle := bsDialog;
     F.ClientWidth := 560;
     F.ClientHeight := 420;
@@ -935,7 +936,8 @@ begin
   F := TForm.CreateNew(nil);
   try
     F.Caption := 'Atualização disponível';
-    F.Position := poScreenCenter;
+    F.PopupMode := pmAuto;
+    F.Position := poMainFormCenter;
     F.BorderStyle := bsDialog;
     F.ClientWidth := 560;
     F.ClientHeight := 400;
