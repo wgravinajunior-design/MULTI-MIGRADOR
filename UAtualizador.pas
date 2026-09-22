@@ -1,4 +1,4 @@
-﻿unit UAtualizador;
+unit UAtualizador;
 
 // Auto-atualizacao via GitHub Releases.
 //
@@ -52,16 +52,17 @@ type
   private
     FInfo: TInfoAtualizacao;
     FCallback: TResultadoProc;
+    FForcarConsulta: Boolean;
     procedure DispararCallback;
   protected
     procedure Execute; override;
   public
-    constructor Create(ACallback: TResultadoProc);
+    constructor Create(ACallback: TResultadoProc; AForcarConsulta: Boolean = False);
     property Info: TInfoAtualizacao read FInfo;
   end;
 
 // Dispara a verificacao em background.
-procedure VerificarAtualizacoesAsync(ACallback: TResultadoProc);
+procedure VerificarAtualizacoesAsync(ACallback: TResultadoProc; AForcarConsulta: Boolean = False);
 
 // Compara "1.2.3" x "1.2.10". Retorna <0, 0 ou >0. Aceita prefixo 'v'.
 // Tira o 'v' da tag do GitHub ('v1.1.7' -> '1.1.7'), para exibir ao usuario.
@@ -97,7 +98,7 @@ const
   ARQ_CHANGELOG = 'CHANGELOG_PENDENTE.txt';
   SUFIXO_OLD    = '.old';
   SUFIXO_UPDATE = '.update';
-  CACHE_HOURS   = 24;
+  CACHE_MINUTOS = 15;
 
 var
   // Progresso do download: escrito pela thread de download, lido pelo timer da
@@ -141,12 +142,12 @@ begin
     if Timestamp = '' then
       Exit;
 
-    // Verifica se cache ainda é válido (< 24 horas)
+    // Verifica se cache ainda e valido (< 15 minutos)
     if not TryStrToDateTime(Timestamp, DataHora) then
       Exit;
 
     Agora := Now;
-    if (DataHora > Agora) or ((Agora - DataHora) > (CACHE_HOURS / 24.0)) then
+    if (DataHora > Agora) or (((Agora - DataHora) * 1440.0) > CACHE_MINUTOS) then
       Exit;
 
     // Carrega dados salvos no cache
@@ -155,14 +156,16 @@ begin
       AInfo.VersaoRemota := Reg.ReadString('VersaoRemota');
       AInfo.UrlDownload := Reg.ReadString('UrlDownload');
       AInfo.Notas := Reg.ReadString('Notas');
-      AInfo.TemAtualizacao := Reg.ReadBool('TemAtualizacao');
+      // Recalcula TemAtualizacao comparando dinamicamente com a versao atual do app
+      AInfo.TemAtualizacao := (AInfo.VersaoRemota <> '') and
+        (CompararVersoes(AInfo.VersaoRemota, APP_VERSAO) > 0) and
+        (AInfo.UrlDownload <> '');
       if Reg.ValueExists('SHA256') then
         AInfo.SHA256 := Reg.ReadString('SHA256')
       else
         AInfo.SHA256 := '';
       Result := True;
-      LogarAcao('Usando cache de versão (verif. há ' +
-        FormatDateTime('h:nn', Agora - DataHora) + ')');
+      LogarAcao('Usando cache recente de versão (' + AInfo.VersaoRemota + ')');
     except
       Exit;
     end;
@@ -439,21 +442,21 @@ end;
 
 { ----- Thread ----- }
 
-constructor TAtualizadorThread.Create(ACallback: TResultadoProc);
+constructor TAtualizadorThread.Create(ACallback: TResultadoProc; AForcarConsulta: Boolean = False);
 begin
   inherited Create(True);
   FreeOnTerminate := True;
   FCallback := ACallback;
+  FForcarConsulta := AForcarConsulta;
 end;
 
 procedure TAtualizadorThread.Execute;
 begin
-  // Tenta usar cache primeiro
-  if not ObterUltimoCheckCache(FInfo) then
+  // Se forçado (ex: atalho Ctrl+U) ou se não houver cache recente (< 15 min), consulta GitHub
+  if FForcarConsulta or (not ObterUltimoCheckCache(FInfo)) then
   begin
     if Terminated or Application.Terminated then
       Exit;
-    // Se cache inválido, consulta GitHub
     FInfo := ConsultarUltimoRelease;
     if Terminated or Application.Terminated then
       Exit;
@@ -477,9 +480,9 @@ begin
     FCallback(FInfo);
 end;
 
-procedure VerificarAtualizacoesAsync(ACallback: TResultadoProc);
+procedure VerificarAtualizacoesAsync(ACallback: TResultadoProc; AForcarConsulta: Boolean = False);
 begin
-  TAtualizadorThread.Create(ACallback).Start;
+  TAtualizadorThread.Create(ACallback, AForcarConsulta).Start;
 end;
 
 { ----- Download e instalacao ----- }

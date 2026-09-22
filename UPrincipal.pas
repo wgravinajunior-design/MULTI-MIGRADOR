@@ -1,4 +1,4 @@
-﻿unit UPrincipal;
+unit UPrincipal;
 
 interface
 
@@ -399,7 +399,7 @@ begin
   begin
     LogarAcao('Verificação manual de atualizações disparada pelo atalho Ctrl+U');
     FVerificacaoManual := True;
-    VerificarAtualizacoesAsync(AtualizacaoVerificada);
+    VerificarAtualizacoesAsync(AtualizacaoVerificada, True);
   end
   // Alt+R para reportar problema
   else if (Key = Ord('R')) and (ssAlt in Shift) then

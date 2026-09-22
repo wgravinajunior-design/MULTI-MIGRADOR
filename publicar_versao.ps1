@@ -237,7 +237,7 @@ Write-Step "8. Criando commit e tag Git..."
 
 $Tag = "v$Versao"
 
-& git add "UAtualizador.pas" "MultiMigrador.dproj" "gerar_recursos.bat" "MultiMigrador.RES"
+& git add -u
 & git commit -m "$($Tag): $Notas"
 & git tag -a $Tag -m "$($Tag): $Notas"
 
