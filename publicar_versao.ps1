@@ -172,8 +172,11 @@ $DprojConteudo = [System.Text.RegularExpressions.Regex]::Replace($DprojConteudo,
 [System.IO.File]::WriteAllText($DprojPath, $DprojConteudo, [System.Text.Encoding]::UTF8)
 Write-Ok "MultiMigrador.dproj atualizado com versao $VersaoQuad."
 
-# 4.3. .migradores.ver
+# 4.3. .migradores.ver (se existir, limpa atributo hidden antes de sobrescrever)
 $VerPath = Join-Path $ScriptDir ".migradores.ver"
+if (Test-Path $VerPath) {
+    (Get-Item $VerPath -Force).Attributes = [System.IO.FileAttributes]::Normal
+}
 [System.IO.File]::WriteAllText($VerPath, $Versao, [System.Text.Encoding]::ASCII)
 Write-Ok ".migradores.ver atualizado."
 
@@ -234,7 +237,7 @@ Write-Step "8. Criando commit e tag Git..."
 
 $Tag = "v$Versao"
 
-& git add "UAtualizador.pas" "MultiMigrador.dproj" ".migradores.ver" "gerar_recursos.bat"
+& git add "UAtualizador.pas" "MultiMigrador.dproj" "gerar_recursos.bat" "MultiMigrador.RES"
 & git commit -m "$($Tag): $Notas"
 & git tag -a $Tag -m "$($Tag): $Notas"
 
