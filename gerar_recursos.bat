@@ -13,13 +13,11 @@ REM
 REM As pastas dos migradores sao descobertas sozinhas (ver abaixo): para
 REM adicionar um sistema novo basta commita-lo, nao ha lista para manter.
 REM
-REM Requer git e resinator.exe no PATH (fica em ...\Studio\37.0\bin64). NAO
-REM use brcc32: nesta versao do Delphi (Studio 37) ele roda sem erro mas gera
+REM Requer git e compilador de recursos no PATH (rc.exe em ...\Studio\23.0\bin ou
+REM resinator.exe). NAO use brcc32: nesta versao do Delphi ele roda sem erro mas gera
 REM um .res vazio de 32 bytes -- falha silenciosa que produziria um exe sem
-REM DLLs/migradores embutidos. NAO use "cgrc -=resinator.exe" tambem: nesta
-REM instalacao ele falha com "Error: .res is not an executable image" (bind
-REM step exige um exe existente como alvo, mesmo so compilando). resinator.exe
-REM chamado direto (o mesmo backend que o cgrc usaria) funciona.
+REM DLLs/migradores embutidos. rc.exe (Microsoft Resource Compiler fornecido pelo Delphi)
+REM compila o DllsEmbutidas.res confiavelmente.
 REM ==========================================================================
 cd /d "%~dp0"
 
@@ -59,7 +57,18 @@ git archive --format=zip -o migradores.zip HEAD --!PASTAS!
 if errorlevel 1 goto :erro
 
 echo [2/2] Compilando DllsEmbutidas.res...
-resinator DllsEmbutidas.rc DllsEmbutidas.res
+where rc >nul 2>nul
+if not errorlevel 1 (
+  rc /r /fo DllsEmbutidas.res DllsEmbutidas.rc
+) else (
+  where resinator >nul 2>nul
+  if not errorlevel 1 (
+    resinator DllsEmbutidas.rc DllsEmbutidas.res
+  ) else (
+    echo FALHA: Nem rc.exe nem resinator.exe foram encontrados no PATH.
+    goto :erro
+  )
+)
 if errorlevel 1 goto :erro
 
 REM Rede de seguranca contra a mesma falha silenciosa de brcc32: um .res
@@ -68,7 +77,7 @@ REM o tamanho do migradores.zip. Se saiu pequeno, algo ficou vazio.
 for %%F in (DllsEmbutidas.res) do if %%~zF LSS 1000000 (
   echo.
   echo FALHA: DllsEmbutidas.res saiu pequeno demais ^(%%~zF bytes^). O .res nao
-  echo tem as DLLs/migradores embutidos -- verifique a saida do cgrc acima.
+  echo tem as DLLs/migradores embutidos.
   goto :erro
 )
 
@@ -78,7 +87,7 @@ goto :fim
 
 :erro
 echo.
-echo FALHA ao gerar os recursos. Verifique se git e resinator estao no PATH.
+echo FALHA ao gerar os recursos. Verifique se git e rc.exe/resinator estao no PATH.
 exit /b 1
 
 :fim
