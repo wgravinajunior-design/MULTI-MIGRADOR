@@ -400,6 +400,25 @@ Ordem de operações, na sequência que os commits recentes seguiram:
    auto-updater consulta em `releases/latest`.
 6. Commitar o bump de versão e dar push.
 
+### Notas de release automáticas por migrador (desde v1.1.50)
+
+Quando `publicar_versao.ps1` é chamado **sem** o parâmetro `-Notas`, ele
+compara `HEAD` com a última tag (`git describe --tags --abbrev=0`) e lista
+toda pasta de migrador (`<NOME>/...`) que teve arquivo alterado — incluindo
+alterações já commitadas no passo 3 do script. O corpo do release passa a
+sair assim automaticamente:
+
+```
+Atualizacao e melhorias da versao v1.1.51
+
+- Atualizacao migrador ECOCENTAURO
+- Atualizacao migrador HIPER
+```
+
+Continua possível passar notas manuais com `-Notas "texto"` quando o resumo
+automático não for suficiente (ex.: mudança que não é só troca de exe de um
+migrador, como correção no launcher em si).
+
 ### Estrutura padrão de uma pasta de migrador
 
 Ao adicionar um sistema novo (ex.: commit `66e11ac`, XD SISTEMAS), a pasta
@@ -455,6 +474,16 @@ Get-ChildItem *.pas,*.dpr | ForEach-Object { $b=[IO.File]::ReadAllBytes($_.FullN
 ```
 
 Adicionado ao checklist de release: **passo 0 — conferir BOM UTF-8 nos fontes** e olhar visualmente as telas (principal, atualizador, reportar problema, configuração, notificações) procurando `Ã`/`Â` no texto.
+
+**Recorrência na v1.1.50:** `UPrincipal.pas` estava sem BOM (era o único `.pas`
+do projeto nessa condição — os outros 8 já tinham sido corrigidos no
+incidente da v1.1.44). Resultado: a caixa "Atualização baixada. O sistema
+será reiniciado na nova versão." exibia `AtualizaÃ§Ã£o baixada`. Corrigido
+regravando o arquivo como UTF-8 com BOM. Para esse tipo de erro não se repetir
+por terceira vez, a checagem/correção automática de BOM (o script PowerShell
+acima) foi incorporada como **passo 1.1 do `publicar_versao.ps1`** — ele agora
+roda antes de cada build e regrava automaticamente qualquer `.pas`/`.dpr` sem
+BOM, sem precisar de intervenção manual.
 
 ---
 

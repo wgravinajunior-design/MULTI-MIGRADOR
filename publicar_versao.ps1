@@ -86,6 +86,31 @@ if (-not (Test-Path $RsVars)) {
 Write-Ok "Delphi rsvars: $RsVars"
 
 # ------------------------------------------------------------------------------
+# 1.1 Checagem de BOM UTF-8 nos fontes (.pas/.dpr)
+# ------------------------------------------------------------------------------
+Write-Step "1.1. Verificando BOM UTF-8 nos arquivos .pas/.dpr..."
+
+$ArquivosSemBom = Get-ChildItem *.pas,*.dpr | ForEach-Object {
+    $Bytes = [System.IO.File]::ReadAllBytes($_.FullName)
+    if ($Bytes.Length -lt 3 -or $Bytes[0] -ne 0xEF -or $Bytes[1] -ne 0xBB -or $Bytes[2] -ne 0xBF) {
+        $_.FullName
+    }
+}
+
+if ($ArquivosSemBom) {
+    Write-Warn "Arquivos sem BOM UTF-8 encontrados (acentos ficariam corrompidos no exe). Corrigindo automaticamente:"
+    $Utf8BomFix = New-Object System.Text.UTF8Encoding($true)
+    foreach ($Arquivo in $ArquivosSemBom) {
+        $Conteudo = [System.IO.File]::ReadAllText($Arquivo, [System.Text.Encoding]::UTF8)
+        [System.IO.File]::WriteAllText($Arquivo, $Conteudo, $Utf8BomFix)
+        Write-Host "  - BOM adicionado: $(Split-Path -Leaf $Arquivo)"
+    }
+    Write-Ok "Todos os arquivos .pas/.dpr agora estao em UTF-8 com BOM."
+} else {
+    Write-Ok "Todos os arquivos .pas/.dpr ja estao em UTF-8 com BOM."
+}
+
+# ------------------------------------------------------------------------------
 # 2. Determinacao da Versao e Notas
 # ------------------------------------------------------------------------------
 Write-Step "2. Determinando versao e notas..."
@@ -112,11 +137,36 @@ if (-not $Versao) {
     Write-Host "Nova versao sugerida: $Versao"
 }
 
+# Detecta quais pastas de migrador tiveram arquivos alterados desde a ultima tag,
+# para listar "Atualizacao migrador <Nome>" nas notas do release automaticamente.
+$UltimaTag = & git describe --tags --abbrev=0 2>$null
+$MigradoresAtualizados = @()
+if ($LASTEXITCODE -eq 0 -and $UltimaTag) {
+    $ArquivosAlterados = & git diff --name-only "$UltimaTag" HEAD
+    $ArquivosStaged = & git diff --name-only --cached
+    $ArquivosPendentes = & git status --porcelain | ForEach-Object { $_.Substring(3) }
+    $TodosArquivos = @($ArquivosAlterados) + @($ArquivosStaged) + @($ArquivosPendentes) | Where-Object { $_ }
+
+    $MigradoresAtualizados = $TodosArquivos |
+        Where-Object { $_ -match '^([^/\\]+)[/\\]' -and (Test-Path (Split-Path $_ -Parent) -PathType Container) -and (Get-Item (Split-Path $_ -Parent) -Force).PSIsContainer } |
+        ForEach-Object { ($_ -split '[/\\]')[0] } |
+        Where-Object { (Test-Path (Join-Path $ScriptDir $_) -PathType Container) -and ($_ -notmatch '^(Win32|__history)$') } |
+        Sort-Object -Unique
+}
+
 if (-not $Notas) {
-    $Notas = "Atualizacao e melhorias da versao v$Versao"
+    if ($MigradoresAtualizados.Count -gt 0) {
+        $LinhasMigradores = $MigradoresAtualizados | ForEach-Object { "- Atualizacao migrador $_" }
+        $Notas = "Atualizacao e melhorias da versao v$Versao`r`n`r`n" + ($LinhasMigradores -join "`r`n")
+    } else {
+        $Notas = "Atualizacao e melhorias da versao v$Versao"
+    }
 }
 
 Write-Ok "Versao alvo: $Versao"
+if ($MigradoresAtualizados.Count -gt 0) {
+    Write-Ok "Migradores atualizados detectados: $($MigradoresAtualizados -join ', ')"
+}
 Write-Ok "Notas: $Notas"
 
 # ------------------------------------------------------------------------------
