@@ -145,10 +145,11 @@ if ($LASTEXITCODE -eq 0 -and $UltimaTag) {
     $ArquivosAlterados = & git diff --name-only "$UltimaTag" HEAD
     $ArquivosStaged = & git diff --name-only --cached
     $ArquivosPendentes = & git status --porcelain | ForEach-Object { $_.Substring(3) }
-    $TodosArquivos = @($ArquivosAlterados) + @($ArquivosStaged) + @($ArquivosPendentes) | Where-Object { $_ }
+    # git coloca entre aspas caminhos com espaco (ex.: "CODIGO UP/x.exe"); as aspas quebram o Test-Path
+    $TodosArquivos = @($ArquivosAlterados) + @($ArquivosStaged) + @($ArquivosPendentes) | Where-Object { $_ } | ForEach-Object { $_.Trim('"') }
 
     $MigradoresAtualizados = $TodosArquivos |
-        Where-Object { $_ -match '^([^/\\]+)[/\\]' -and (Test-Path (Split-Path $_ -Parent) -PathType Container) -and (Get-Item (Split-Path $_ -Parent) -Force).PSIsContainer } |
+        Where-Object { $_ -match '^[^/\\]+[/\\]' } |
         ForEach-Object { ($_ -split '[/\\]')[0] } |
         Where-Object { (Test-Path (Join-Path $ScriptDir $_) -PathType Container) -and ($_ -notmatch '^(Win32|__history)$') } |
         Sort-Object -Unique

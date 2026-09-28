@@ -41,6 +41,7 @@ type
     procedure DefinirStatus(const ATexto: string; AErro: Boolean);
     procedure EnvioConcluido(Sender: TObject);
     procedure FormDestroy(Sender: TObject);
+    procedure FormCloseQuery(Sender: TObject; var CanClose: Boolean);
   public
     constructor CriarComSistemas(AOwner: TComponent; const ASistemas: TStrings);
   end;
@@ -201,7 +202,7 @@ constructor TEnvioThread.Create(const ASistema, ADescricao, AEmail, ARevenda, AL
   const AOrigem, ADestino: TArray<string>);
 begin
   inherited Create(True);          // criada suspensa; iniciada pelo chamador
-  FreeOnTerminate := False;        // o dialogo le Erro no OnTerminate e libera
+  FreeOnTerminate := True;         // libera automaticamente ao terminar, evitando deadlock no OnTerminate
   FSistema := ASistema;
   FDescricao := ADescricao;
   FEmail := AEmail;
@@ -347,6 +348,7 @@ begin
   FEhTemaEscuro := EhTemaEscuro;
   FThreadEnvio := nil;
   OnDestroy := FormDestroy;
+  OnCloseQuery := FormCloseQuery;
   MontarUI(ASistemas);
 end;
 
@@ -356,8 +358,17 @@ begin
   begin
     FThreadEnvio.OnTerminate := nil;
     FThreadEnvio.Terminate;
-    FThreadEnvio.FreeOnTerminate := True;
     FThreadEnvio := nil;
+  end;
+end;
+
+procedure TFormReportarProblema.FormCloseQuery(Sender: TObject; var CanClose: Boolean);
+begin
+  if FThreadEnvio <> nil then
+  begin
+    CanClose := False;
+    MessageDlg('O envio do relatório está em andamento. Aguarde a conclusão.',
+      mtInformation, [mbOK], 0);
   end;
 end;
 
@@ -775,7 +786,8 @@ begin
   btCancelar.Enabled := False;
   Screen.Cursor := crHourGlass;
   DefinirStatus('Enviando e-mail, aguarde...', False);
-  lblStatus.Font.Color := clBlue;
+  lblStatus.Font.Color := $00C08000;
+  Update;
 
   // Envio em thread para nao travar a janela.
   FThreadEnvio := TEnvioThread.Create(cbSistema.Text, Descricao, Email, Revenda, LinkBase, Origem, Destino);
@@ -789,12 +801,10 @@ var
   ThreadInstancia: TEnvioThread;
 begin
   ThreadInstancia := TEnvioThread(Sender);
-  try
-    Erro := ThreadInstancia.Erro;
-  finally
-    FThreadEnvio := nil;
-    ThreadInstancia.Free;
-  end;
+  Erro := ThreadInstancia.Erro;
+  FThreadEnvio := nil;
+  // A thread libera a si mesma automaticamente ao encerrar pois FreeOnTerminate = True.
+  // Nao chamar ThreadInstancia.Free aqui para evitar deadlock no Synchronize do Delphi.
 
   Screen.Cursor := crDefault;
   btEnviar.Enabled := True;
@@ -802,8 +812,8 @@ begin
 
   if Erro = '' then
   begin
-    DefinirStatus('Relatorio enviado com sucesso!', False);
-    MessageDlg('Relatorio enviado com sucesso para ' + ObterSMTPDestino + '.',
+    DefinirStatus('Relatório enviado com sucesso!', False);
+    MessageDlg('Relatório enviado com sucesso para ' + ObterSMTPDestino + '.',
       mtInformation, [mbOK], 0);
     ModalResult := mrOk;
   end
