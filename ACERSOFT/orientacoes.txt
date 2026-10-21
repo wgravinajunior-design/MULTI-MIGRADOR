@@ -1,0 +1,35 @@
+========================================================================
+MIGRADOR ACERSOFT -> ERP UPSYSTEM (FIREBIRD 5.0)
+GUIA DE OPERAÇÃO E HOMOLOGAÇÃO
+========================================================================
+
+1. AMBIENTE E CONEXÕES:
+   - Origem: AcerSoft (Firebird 2.5) na porta 3070 (ou porta configurada).
+     Banco: D:\OneDrive\MIGRADORES\MIGRADOR ACERSOFT\BANCO.FDB
+   - Destino: ERP UpSystem (Firebird 5.0) na porta 3060.
+     Banco: D:\OneDrive\DADOS\ACERSOFT\DADOS.FDB
+   - Biblioteca Cliente: fbclient.dll (32-bit Win32) presente na pasta.
+
+2. ORDEM RECOMENDADA DE MIGRAÇÃO:
+   a) Configurar e Testar Conexão de Origem e Destino.
+   b) Pessoas (Clientes, Fornecedores, Transportadoras, Vendedores).
+      - Suporta modo Completo (Limpeza prévia) e modo Incremental (sem apagar nada).
+      - Deduplicação inteligente por CPF/CNPJ e Razão Social/Nome.
+      - CAMPO_1 exclusivo em TB_PESSOA para rastreabilidade de IDs legados.
+   c) Produtos (Grupos, Subgrupos, Unidades, Produtos, Códigos de Barras, Tributos).
+      - Garante registro base em TB_PRODUTO_ESTOQUE para evitar erro de duplicidade.
+      - Aplicação de regras fiscais de ICMS (Normal vs Substituição), PIS, COFINS e IPI.
+   d) Estoque e Movimentos:
+      - Implantação de saldo físico e fiscal com movimentos do tipo 'ACE' (Acerto de Estoque).
+   e) Financeiro:
+      - Contas a Pagar e Itens (PAG_TIPO = 'DP', PAG_ORIGEM = 'MIGRACAO', PARCELA como INTEGER).
+      - Contas a Receber e Itens (REC_TIPO = 'DP', REC_ORIGEM = 'MIGRACAO', fallback PES_ID = 1).
+   f) Fotos dos Produtos:
+      - Sincronização de imagens em PRD_IMAGEM e TB_FOTOS.
+
+3. REGRAS INVIOLÁVEIS DO SISTEMA:
+   - TB_ESPECIE_MOEDA é intocável (nunca deletar).
+   - CAMPO_1 existe apenas em TB_PESSOA.
+   - PES_ID = 1 sempre preservado como CONSUMIDOR FINAL.
+   - Sincronização automática do controle de numeração em TB_SEQUENCIAL.
+========================================================================
