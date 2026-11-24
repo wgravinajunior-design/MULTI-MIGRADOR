@@ -30,7 +30,7 @@ uses
 
 const
   APP_VERSAO   = '1.1.65';                   // <-- bump a cada release
-  GITHUB_OWNER = 'wgravinajunior-design';
+  GITHUB_OWNER = 'AuraSistemas-up';
   GITHUB_REPO  = 'MULTI-MIGRADOR';
   NOME_EXE     = 'MultiMigrador.exe';
 
